@@ -2,7 +2,7 @@ module process #(
   parameter integer DATA_WIDTH = 16,
   parameter integer OUT_WIDTH  = 16,
   parameter integer LANES      = 4,
-  parameter integer PIPE_LAT   = 45
+  parameter integer PIPE_LAT   = 46
 )(
   input  wire                          aclk,
   input  wire                          aresetn,
@@ -15,8 +15,8 @@ module process #(
 
   // AXIS Master (to DMA S2MM)
   output wire [LANES*OUT_WIDTH-1:0]    m_tdata,
-    output wire                          m_tvalid,
-    output wire                          m_tlast
+  output wire                          m_tvalid,
+  output wire                          m_tlast
   );
 
   // lane0 LSB
@@ -47,23 +47,23 @@ module process #(
   always @* begin
     next_state = state;
     case (state)
-      ST_IDLE: begin
-        // 等第一個輸入握手再進入 LOAD
-        if (s_hand) next_state = ST_LOAD;
-      end
-      ST_LOAD: begin
-        // 每拍固定 4 個元素，裝滿 16 個就進 STREAM
-        // 若本拍裝滿（mat_idx==12 且 s_hand），下拍轉 STREAM
-        if ((mat_idx == 4'd8) && s_hand)
-          next_state = ST_STREAM;
-        else
-          next_state = ST_LOAD;
-      end
+      ST_IDLE:   begin
+                   // 等第一個輸入握手再進入 LOAD
+                   if (s_hand) next_state = ST_LOAD;
+                 end
+      ST_LOAD:   begin
+                   // 每拍固定 4 個元素，裝滿 16 個就進 STREAM
+                   // 若本拍裝滿（mat_idx==12 且 s_hand），下拍轉 STREAM
+                   if ((mat_idx == 4'd8) && s_hand)
+                     next_state = ST_STREAM;
+                   else
+                     next_state = ST_LOAD;
+                 end
       ST_STREAM: begin
-        if (m_tlast)
-          next_state = ST_IDLE; // 簡單起見，永遠停在 STREAM
-      end
-      default: next_state = ST_IDLE;
+                   if (m_tlast)
+                     next_state = ST_IDLE; // 簡單起見，永遠停在 STREAM
+                 end
+      default:   next_state = ST_IDLE;
     endcase
   end
 
@@ -105,96 +105,271 @@ module process #(
   always @(negedge aclk or negedge aresetn) begin
     if (!aresetn)
       for (i=0; i<12; i=i+1) mat[i] <= {DATA_WIDTH{1'b0}};
-      else begin
-        if (ip_load_matrix) begin
-          if (mat_idx <= 4'd8) begin
-            mat[mat_idx+0] <= lane0;
-            mat[mat_idx+1] <= lane1;
-            mat[mat_idx+2] <= lane2;
-            mat[mat_idx+3] <= lane3;
-          end
+    else begin
+      if (ip_load_matrix) begin
+        if (mat_idx <= 4'd8) begin
+          mat[mat_idx+0] <= lane0;
+          mat[mat_idx+1] <= lane1;
+          mat[mat_idx+2] <= lane2;
+          mat[mat_idx+3] <= lane3;
         end
       end
     end
+  end
 
-    // matrix value
-    wire [DATA_WIDTH-1:0]  a00,a01,a02,a03,
-                           a10,a11,a12,a13,
-                           a20,a21,a22,a23;
+  // matrix value
+  wire [DATA_WIDTH-1:0]  a00, a01, a02, a03,
+                         a10, a11, a12, a13,
+                         a20, a21, a22, a23;
 
-    assign a00 = mat[ 0]; assign a01 = mat[ 1]; assign a02 = mat[ 2]; assign a03 = mat[ 3];
-    assign a10 = mat[ 4]; assign a11 = mat[ 5]; assign a12 = mat[ 6]; assign a13 = mat[ 7];
-    assign a20 = mat[ 8]; assign a21 = mat[ 9]; assign a22 = mat[10]; assign a23 = mat[11];
+  assign a00 = mat[ 0]; assign a01 = mat[ 1]; assign a02 = mat[ 2]; assign a03 = mat[ 3];
+  assign a10 = mat[ 4]; assign a11 = mat[ 5]; assign a12 = mat[ 6]; assign a13 = mat[ 7];
+  assign a20 = mat[ 8]; assign a21 = mat[ 9]; assign a22 = mat[10]; assign a23 = mat[11];
 
-    // only in STREAM state = s_tdata, others = 0
-    wire [LANES*DATA_WIDTH-1:0] ip_vector =
-      (state == ST_STREAM) ? s_tdata : {LANES*DATA_WIDTH{1'b0}};
+  // only in STREAM state = s_tdata, others = 0
+  // wire [LANES*DATA_WIDTH-1:0] ip_vector =
+  //   (state == ST_STREAM) ? s_tdata : {LANES*DATA_WIDTH{1'b0}};
+  
+  reg  [LANES*DATA_WIDTH-1:0] ip_vector;
+  always @(*) begin
+    if (state == ST_STREAM)
+      ip_vector = s_tdata;
+    else
+      ip_vector = {LANES*DATA_WIDTH{1'b0}};
+  end
 
-    always @(*) begin
-      if (!aresetn)
+  reg  [5:0] ori_count;
+  always @(posedge aclk) begin
+    if (state == ST_STREAM)
+      ori_count <= ori_count + 1;
+    else
+      ori_count <= 0;
+  end
+
+  always @(*) begin
+    if (!aresetn)
+      ip_load_matrix = 0;
+    else begin
+      if (state == ST_STREAM)
         ip_load_matrix = 0;
-      else begin
-        if (state == ST_STREAM)
-          ip_load_matrix = 0;
-        else if (s_hand)
-          ip_load_matrix = 1;
-        else
-          ip_load_matrix = 0;
-      end    
+      else if (s_hand)
+        ip_load_matrix = 1;
+      else
+        ip_load_matrix = 0;
+    end    
+  end
+
+  wire [OUT_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
+  reg  [OUT_WIDTH-1:0] ori_x [0: 2];
+  reg  [OUT_WIDTH-1:0] ori_y [0: 2]; 
+  reg  [OUT_WIDTH-1:0] ori_z [0: 2];
+
+  always @(posedge aclk)begin
+    if(ori_count > 5 && ori_count < 9) begin
+      ori_x[ori_count - 6] = normalize_x;  
+      ori_y[ori_count - 6] = normalize_y; 
+      ori_z[ori_count - 6] = normalize_z; 
     end
+  end
 
-    wire [OUT_WIDTH-1:0] result0, result1, result2;
-    SRT #(
-      .DATA_WIDTH (DATA_WIDTH),
-      .OUT_WIDTH  (OUT_WIDTH)
-    ) srt (
-      .aclk        (aclk),
-      .aresetn     (aresetn),
-      .load_matrix (ip_load_matrix),
-      .a00(a00), .a01(a01), .a02(a02), .a03(a03),
-      .a10(a10), .a11(a11), .a12(a12), .a13(a13),
-      .a20(a20), .a21(a21), .a22(a22), .a23(a23),
-      .vector      (ip_vector),
-      .result0     (result0), // q16 
-      .result1     (result1), // q16
-      .result2     (result2)  // q16
-    );
+  SRT #(
+    .DATA_WIDTH (DATA_WIDTH),
+    .OUT_WIDTH  (OUT_WIDTH)
+  ) srt (
+    .aclk        (aclk),
+    .aresetn     (aresetn),
+    .load_matrix (ip_load_matrix),
+    .a00(a00), .a01(a01), .a02(a02), .a03(a03), // q16
+    .a10(a10), .a11(a11), .a12(a12), .a13(a13),
+    .a20(a20), .a21(a21), .a22(a22), .a23(a23),
+    .vector      (ip_vector),   // q0
+    .result0     (normalize_x), // q16 
+    .result1     (normalize_y), // q16
+    .result2     (normalize_z)  // q16
+  );
 
-    wire [15:0] cordic_x0 = result0[15]? (~result0+1): result0; // q16
-    wire [15:0] cordic_y0 = result1[15]? (~result1+1): result1; // q16
-    wire [15:0] cordic_z0 = result2[15]? (~result2+1): result2; // q16
+  ////////// 0[0] - xa //////////
+  wire [OUT_WIDTH-1:0] diff_0_x = ori_x[0] - normalize_x;
+  wire [OUT_WIDTH-1:0] diff_0_y = ori_y[0] - normalize_y;
+  wire [OUT_WIDTH-1:0] diff_0_z = ori_z[0] - normalize_z;
 
-    wire [31: 0] Output_xn;
-    CORDIC_Vector uut (
-      .clk       (aclk),
-      .RST_N     (aresetn),
-      .Input_x0  (cordic_x0 <<< 15), // q31 (q16+q15)
-      .Input_y0  (cordic_y0 <<< 15), // q31
-      .Input_z0  (cordic_z0 <<< 15), // q31
-      .Output_xn (Output_xn) // q31
-    );
+  reg [OUT_WIDTH-1:0] diff_0_x_r[0:37];
+  reg [OUT_WIDTH-1:0] diff_0_y_r[0:37];
+  reg [OUT_WIDTH-1:0] diff_0_z_r[0:37];
 
-    /*
-    wire [31:0] d0_q16;
-    cubic_cov dut (
-      .clk(aclk),
-      .rst_n(aresetn),
-      .r_q16(Output_xn >>> 15),
-      .ans_q16(d0_q16)
-    );
-    */
+  always @(posedge aclk) begin
+    diff_0_x_r[0] <= diff_0_x;
+    diff_0_y_r[0] <= diff_0_y;
+    diff_0_z_r[0] <= diff_0_z;
+    for (i=1; i<38; i=i+1) begin
+      diff_0_x_r[i] <= diff_0_x_r[i-1];
+      diff_0_y_r[i] <= diff_0_y_r[i-1];
+      diff_0_z_r[i] <= diff_0_z_r[i-1];
+    end
+  end
 
-    wire [31:0] d1_q16;
-    cubic_cov_d1 dut1 (
-      .clk(aclk),
-      .rst_n(aresetn),
-      .r_q16(Output_xn >>> 15), // q16
-      .ans_q16(d1_q16) // q16
-    );
+  wire [15:0] cordic_0_x = diff_0_x[15]? (~diff_0_x+1): diff_0_x; // q16
+  wire [15:0] cordic_0_y = diff_0_y[15]? (~diff_0_y+1): diff_0_y; // q16
+  wire [15:0] cordic_0_z = diff_0_z[15]? (~diff_0_z+1): diff_0_z; // q16
 
-    //assign m_tdata = {result2, result1, result0};
-    assign m_tdata = d1_q16;
-    assign m_tvalid = vld_sr[PIPE_LAT-1];
-    assign m_tlast  = lst_sr[PIPE_LAT-1];
+  wire [31: 0] r0;
+  CORDIC_Vector uut (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x0  (cordic_0_x), // q31 (q16+q15)
+    .Input_y0  (cordic_0_y), // q31
+    .Input_z0  (cordic_0_z), // q31
+    .Output_xn (r0) // q31
+  );
+
+  ////////// 0[1] - xa //////////
+  wire [OUT_WIDTH-1:0] diff_1_x = ori_x[1] - normalize_x;
+  wire [OUT_WIDTH-1:0] diff_1_y = ori_y[1] - normalize_y;
+  wire [OUT_WIDTH-1:0] diff_1_z = ori_z[1] - normalize_z;
+
+  reg [OUT_WIDTH-1:0] diff_1_x_r[0:37];
+  reg [OUT_WIDTH-1:0] diff_1_y_r[0:37];
+  reg [OUT_WIDTH-1:0] diff_1_z_r[0:37];
+
+  always @(posedge aclk) begin
+    diff_1_x_r[0] <= diff_1_x;
+    diff_1_y_r[0] <= diff_1_y;
+    diff_1_z_r[0] <= diff_1_z;
+    for (i=1; i<38; i=i+1) begin
+      diff_1_x_r[i] <= diff_1_x_r[i-1];
+      diff_1_y_r[i] <= diff_1_y_r[i-1];
+      diff_1_z_r[i] <= diff_1_z_r[i-1];
+    end
+  end
+
+  wire [15:0] cordic_1_x = diff_1_x[15]? (~diff_1_x+1): diff_1_x; // q16
+  wire [15:0] cordic_1_y = diff_1_y[15]? (~diff_1_y+1): diff_1_y; // q16
+  wire [15:0] cordic_1_z = diff_1_z[15]? (~diff_1_z+1): diff_1_z; // q16
+
+  wire [31: 0] r1;
+  CORDIC_Vector uut1 (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x0  (cordic_1_x), // q31 (q16+q15)
+    .Input_y0  (cordic_1_y), // q31
+    .Input_z0  (cordic_1_z), // q31
+    .Output_xn (r1) // q31
+  );
+
+  ////////// 0[2] - xa //////////
+  wire [OUT_WIDTH-1:0] diff_2_x = ori_x[2] - normalize_x;
+  wire [OUT_WIDTH-1:0] diff_2_y = ori_y[2] - normalize_y;
+  wire [OUT_WIDTH-1:0] diff_2_z = ori_z[2] - normalize_z;
+
+  reg [OUT_WIDTH-1:0] diff_2_x_r[0:37];
+  reg [OUT_WIDTH-1:0] diff_2_y_r[0:37];
+  reg [OUT_WIDTH-1:0] diff_2_z_r[0:37];
+
+  always @(posedge aclk) begin
+    diff_2_x_r[0] <= diff_2_x;
+    diff_2_y_r[0] <= diff_2_y;
+    diff_2_z_r[0] <= diff_2_z;
+    for (i=1; i<38; i=i+1) begin
+      diff_2_x_r[i] <= diff_2_x_r[i-1];
+      diff_2_y_r[i] <= diff_2_y_r[i-1];
+      diff_2_z_r[i] <= diff_2_z_r[i-1];
+    end
+  end
+
+  wire [15:0] cordic_2_x = diff_2_x[15]? (~diff_2_x+1): diff_2_x; // q16
+  wire [15:0] cordic_2_y = diff_2_y[15]? (~diff_2_y+1): diff_2_y; // q16
+  wire [15:0] cordic_2_z = diff_2_z[15]? (~diff_2_z+1): diff_2_z; // q16
+
+  wire [31: 0] r2;
+  CORDIC_Vector uut2 (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x0  (cordic_2_x), // q31 (q16+q15)
+    .Input_y0  (cordic_2_y), // q31
+    .Input_z0  (cordic_2_z), // q31
+    .Output_xn (r2) // q31
+  );
+
+  /*
+  wire [31:0] d0_q16;
+  cubic_cov dut (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(Output_xn >>> 15),
+    .ans_q16(d0_q16)
+  );
+  */
+
+  wire [31:0] d1_0_q16;
+  cubic_cov_d1 ccd0 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(r0), // q16
+    .ans_q16(d1_0_q16) // q16
+  );
+
+  wire [31:0] d1_1_q16;
+  cubic_cov_d1 ccd1 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(r1), // q16
+    .ans_q16(d1_1_q16) // q16
+  );
+
+  wire [31:0] d1_2_q16;
+  cubic_cov_d1 ccd2 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(r2), // q16
+    .ans_q16(d1_2_q16) // q16
+  );
+
+  wire signed [31:0] K_ZGx [0:2];
+  wire signed [31:0] K_ZGy [0:2];
+  wire signed [31:0] K_ZGz [0:2];
+
+  //reg  signed [31:0] K_ZGx [0:2];
+  //reg  signed [31:0] K_ZGy [0:2];
+  //reg  signed [31:0] K_ZGz [0:2];
+  
+  mul_q16 u_mul0 (.a(d1_0_q16), .b($signed(diff_0_x_r[37])), .y(K_ZGx[0]));
+  mul_q16 u_mul1 (.a(d1_1_q16), .b($signed(diff_1_x_r[37])), .y(K_ZGx[1]));
+  mul_q16 u_mul2 (.a(d1_2_q16), .b($signed(diff_2_x_r[37])), .y(K_ZGx[2]));
+  mul_q16 u_mul3 (.a(d1_0_q16), .b($signed(diff_0_y_r[37])), .y(K_ZGy[0]));
+  mul_q16 u_mul4 (.a(d1_1_q16), .b($signed(diff_1_y_r[37])), .y(K_ZGy[1]));
+  mul_q16 u_mul5 (.a(d1_2_q16), .b($signed(diff_2_y_r[37])), .y(K_ZGy[2]));
+  mul_q16 u_mul6 (.a(d1_0_q16), .b($signed(diff_0_z_r[37])), .y(K_ZGz[0]));
+  mul_q16 u_mul7 (.a(d1_1_q16), .b($signed(diff_1_z_r[37])), .y(K_ZGz[1]));
+  mul_q16 u_mul8 (.a(d1_2_q16), .b($signed(diff_2_z_r[37])), .y(K_ZGz[2]));
+  
+  /*
+  always @(posedge aclk) begin
+    for(i=0;i<3;i=i+1) begin 
+      K_ZGx[i] <= K_ZGx_w[i]; 
+      K_ZGy[i] <= K_ZGy_w[i]; 
+      K_ZGz[i] <= K_ZGz_w[i]; 
+    end
+  end
+  */
+
+  /*
+  assign K_ZGx[0] = ($signed(d1_0_q16) * $signed(diff_0_x_r[37])) >>> 16;
+  assign K_ZGx[1] = ($signed(d1_1_q16) * $signed(diff_1_x_r[37])) >>> 16;
+  assign K_ZGx[2] = ($signed(d1_2_q16) * $signed(diff_2_x_r[37])) >>> 16;
+  assign K_ZGy[0] = ($signed(d1_0_q16) * $signed(diff_0_y_r[37])) >>> 16;
+  assign K_ZGy[1] = ($signed(d1_1_q16) * $signed(diff_1_y_r[37])) >>> 16;
+  assign K_ZGy[2] = ($signed(d1_2_q16) * $signed(diff_2_y_r[37])) >>> 16;
+  assign K_ZGz[0] = ($signed(d1_0_q16) * $signed(diff_0_z_r[37])) >>> 16;
+  assign K_ZGz[1] = ($signed(d1_1_q16) * $signed(diff_1_z_r[37])) >>> 16;
+  assign K_ZGz[2] = ($signed(d1_2_q16) * $signed(diff_2_z_r[37])) >>> 16;
+  */
+
+  //assign m_tdata = {normalize_z, normalize_y, normalize_x};
+  //assign m_tdata = ($signed(d1_q16) * $signed(diff_x_r[37]));
+  assign m_tdata = K_ZGx[0]; 
+  //assign m_tdata = $signed(d1_0_q16); 
+  //assign m_tdata = $signed(ori_x[0]);
+  assign m_tvalid = vld_sr[PIPE_LAT-2];
+  assign m_tlast  = lst_sr[PIPE_LAT-2];
 
 endmodule

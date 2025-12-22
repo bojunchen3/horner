@@ -31,7 +31,7 @@ module CORDIC_Roter(
   output reg signed [31:0] Output_z_n;
   output reg signed [31:0] Output_angle_n;
   output reg        [31:0] Output_sign_n;
-  always @ (posedge clk or negedge RST_N) begin
+  always @(posedge clk or negedge RST_N) begin
     if (!RST_N) begin
       Output_x_n<=1'b0;
       Output_y_n<=1'b0;
@@ -39,8 +39,8 @@ module CORDIC_Roter(
       Output_angle_n<=1'b0;
       Output_sign_n<=1'b0;
     end
-    else
-      if (!MODE) // Rotation Mode
+    else begin
+      if (!MODE) begin // Rotation Mode
         if (Input_angle_n_1[31]) begin
           Output_x_n<=Input_x_n_1+(Input_y_n_1>>>SHIFT_BASE);
           Output_y_n<=Input_y_n_1-(Input_x_n_1>>>SHIFT_BASE);
@@ -53,7 +53,7 @@ module CORDIC_Roter(
           Output_angle_n<=Input_angle_n_1-Input_rote_base;
           Output_sign_n<=Input_sign_n_1;
         end
-      else // Vector Mode
+      end else begin // Vector Mode
         if (!Input_y_n_1[31]) begin
           Output_x_n<=Input_x_n_1+(Input_y_n_1>>>SHIFT_BASE);
           Output_y_n<=Input_y_n_1-(Input_x_n_1>>>SHIFT_BASE);
@@ -67,5 +67,7 @@ module CORDIC_Roter(
           //Output_sign_n<=Input_sign_n_1;
         end
         Output_z_n <= Input_z_n_1;
+      end
+    end
   end
 endmodule

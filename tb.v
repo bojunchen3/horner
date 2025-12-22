@@ -69,33 +69,35 @@ module tb;
     mat_vals[10] = 41;
     mat_vals[11] = -17613;
     //for (i=8; i<12; i=i+1) mat_vals[i] = i[DATA_WIDTH-1:0];
-    // test vector q16
-    vec_vals[0][  DATA_WIDTH-1:            0] = 25; 
-    vec_vals[0][2*DATA_WIDTH-1:   DATA_WIDTH] = 25;
-    vec_vals[0][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 25;
-    vec_vals[0][4*DATA_WIDTH-1: 3*DATA_WIDTH] =  1;
-    vec_vals[1][  DATA_WIDTH-1:            0] = 25; 
-    vec_vals[1][2*DATA_WIDTH-1:   DATA_WIDTH] = 25;
-    vec_vals[1][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 75;
-    vec_vals[1][4*DATA_WIDTH-1: 3*DATA_WIDTH] =  1;
-    vec_vals[2][  DATA_WIDTH-1:            0] = 25; 
-    vec_vals[2][2*DATA_WIDTH-1:   DATA_WIDTH] = 25;
-    vec_vals[2][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 125;
-    vec_vals[2][4*DATA_WIDTH-1: 3*DATA_WIDTH] =  1;
-    vec_vals[3][  DATA_WIDTH-1:            0] = 65456;
-    vec_vals[3][2*DATA_WIDTH-1:   DATA_WIDTH] = 65523;
-    vec_vals[3][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 20;
-    vec_vals[3][4*DATA_WIDTH-1: 3*DATA_WIDTH] = 65478;
-    vec_vals[4][  DATA_WIDTH-1:            0] = 76; 
-    vec_vals[4][2*DATA_WIDTH-1:   DATA_WIDTH] = 65469;
-    vec_vals[4][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 65535;
-    vec_vals[4][4*DATA_WIDTH-1: 3*DATA_WIDTH] = 83;
+    // test vector
+    vec_vals[0][  DATA_WIDTH-1:            0] = 300;
+    vec_vals[0][2*DATA_WIDTH-1:   DATA_WIDTH] = 800;
+    vec_vals[0][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 500;
+    vec_vals[0][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    vec_vals[1][  DATA_WIDTH-1:            0] = 600;
+    vec_vals[1][2*DATA_WIDTH-1:   DATA_WIDTH] =   0;
+    vec_vals[1][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 400;
+    vec_vals[1][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    vec_vals[2][  DATA_WIDTH-1:            0] = 800;
+    vec_vals[2][2*DATA_WIDTH-1:   DATA_WIDTH] = 500;
+    vec_vals[2][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 400;
+    vec_vals[2][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    vec_vals[3][  DATA_WIDTH-1:            0] =  25;
+    vec_vals[3][2*DATA_WIDTH-1:   DATA_WIDTH] =  25;
+    vec_vals[3][3*DATA_WIDTH-1: 2*DATA_WIDTH] =  25;
+    vec_vals[3][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    vec_vals[4][  DATA_WIDTH-1:            0] =  25;
+    vec_vals[4][2*DATA_WIDTH-1:   DATA_WIDTH] =  25;
+    vec_vals[4][3*DATA_WIDTH-1: 2*DATA_WIDTH] =  75;
+    vec_vals[4][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    /*
     for (i=5; i<12; i=i+1) begin
       vec_vals[i][  DATA_WIDTH-1:            0]  = (4*i + 0 + 512);  // 低8位，自然截斷
       vec_vals[i][2*DATA_WIDTH-1:   DATA_WIDTH]  = (4*i + 1 + 512);
       vec_vals[i][3*DATA_WIDTH-1: 2*DATA_WIDTH]  = (4*i + 2 + 512);
       vec_vals[i][4*DATA_WIDTH-1: 3*DATA_WIDTH]  = (4*i + 3 + 512);
     end
+    */
 
     // release reset
     #30 aresetn = 1'b1;
@@ -108,9 +110,9 @@ module tb;
       @(posedge aclk);
     end
 
-    for (i=0; i<12; i=i+1) begin
+    for (i=0; i<5; i=i+1) begin
       s_tdata <= vec_vals[i];
-      s_tlast <= (i==11) ? 1'b1 : 1'b0;
+      s_tlast <= (i==4) ? 1'b1 : 1'b0;
       @(posedge aclk);
     end
     s_tvalid <= 1'b0;
@@ -127,9 +129,9 @@ module tb;
       @(posedge aclk);
     end
 
-    for (i=0; i<12; i=i+1) begin
+    for (i=0; i<5; i=i+1) begin
       s_tdata <= vec_vals[i];
-      s_tlast <= (i==11) ? 1'b1 : 1'b0;
+      s_tlast <= (i==4) ? 1'b1 : 1'b0;
       @(posedge aclk);
     end
     s_tvalid <= 1'b0;
