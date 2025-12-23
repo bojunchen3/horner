@@ -1,15 +1,15 @@
 module cubic_cov_d1 #(
   // a 的 Q16 表示，預設 a = 1.0
-  parameter signed [31:0] A_Q16 = 32'sd111411,
+  parameter signed  [31:0] A_Q16 = 32'sd111411,
   parameter integer DATA_WIDTH = 16
-  )(
-    input wire clk,
-    input wire rst_n,
+)(
+    input wire                  clk,
+    input wire                  rst_n,
 
     input wire [DATA_WIDTH-1:0] r_q16,
 
-    output reg [31:0] ans_q16
-  );
+    output reg [31:0]           ans_q16
+);
 
   // 係數皆為 Q16 = round(coef * 65536)
   localparam signed [31:0] C5 =  32'sd8385;   //  0.12794
@@ -81,15 +81,15 @@ module cubic_cov_d1 #(
       gt_s1 <= (r_q16 > A_Q16);
 
       // Stage2 regs
-      r_s2  <= r_s1;
-      r2_s2 <= r2_s1;
+      r_s2   <= r_s1;
+      r2_s2  <= r2_s1;
       add2_q <= add2_w;
-      gt_s2 <= gt_s1;
+      gt_s2  <= gt_s1;
 
       // Stage3 regs
-      r_s3  <= r_s2;
+      r_s3   <= r_s2;
       add3_q <= add3_w;
-      gt_s3 <= gt_s2;
+      gt_s3  <= gt_s2;
 
       // Stage4 regs
       ans_q16 <= gt_s3 ? 32'sd0 : add4_w;
