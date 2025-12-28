@@ -167,9 +167,9 @@ module process #(
 
   always @(posedge aclk)begin
     if(ori_count > 5 && ori_count < 9) begin
-      ori_x[ori_count - 6] = normalize_x;  
-      ori_y[ori_count - 6] = normalize_y; 
-      ori_z[ori_count - 6] = normalize_z; 
+      ori_x[ori_count - 6] <= normalize_x;  
+      ori_y[ori_count - 6] <= normalize_y; 
+      ori_z[ori_count - 6] <= normalize_z; 
     end
   end
 
