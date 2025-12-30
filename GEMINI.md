@@ -26,15 +26,14 @@ The system processes incoming data streams by performing the following operation
 This project is a raw Verilog RTL design. There are no build scripts provided.
 
 ### Simulation
-To simulate the design, you can use standard Verilog simulators like `iverilog` or `vcs`. The testbench `tb.v` is the entry point.
+To simulate the design, you can use standard Verilog simulators `vcs`. The testbench `tb.v` is the entry point.
 
-**Using Icarus Verilog:**
-```bash
-iverilog -o sim tb.v top.v process.v SRT.v SystolicArray.v PE.v CORDIC_Vector.v CORDIC_Roter.v cubic_cov_d1.v mul_q16.v
-vvp sim
+**Using vcs:**
+```tcsh
+source ../vcs.cmd
 ```
 
-**Note:** The `tb.v` file contains `$fsdbDumpfile` calls which are specific to the Verdi/VCS environment. If using `iverilog`, you may need to comment these out or replace them with `$dumpfile("dump.vcd"); $dumpvars;`.
+**Note:** The `tb.v` file contains `$fsdbDumpfile` calls which are specific to the Verdi/VCS environment.
 
 ## Data Formats
 *   **Fixed Point:** The design heavily relies on Q16 fixed-point arithmetic (16 fractional bits).
