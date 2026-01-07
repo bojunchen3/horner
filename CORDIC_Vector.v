@@ -1,9 +1,9 @@
 module CORDIC_Vector(
   input         clk,
   input         RST_N,
-  input  [31:0] Input_x0,
-  input  [31:0] Input_y0,
-  input  [31:0] Input_z0,
+  input  [31:0] Input_x,
+  input  [31:0] Input_y,
+  input  [31:0] Input_z,
   output [31:0] Output_xn
 );
   
@@ -45,7 +45,7 @@ module CORDIC_Vector(
   /*
   x_00=K; is the reciprocal of K_n
   y_00=0
-  z_00=Input_x0; is the aimed angles
+  z_00=Input_x; is the aimed angles
   */
   always @ (posedge clk or negedge RST_N) begin
     if (!RST_N) begin
@@ -54,12 +54,12 @@ module CORDIC_Vector(
       z_00 <= 1'b0;
     end
     else begin
-      //x_00 <= (Input_x0[31])? ~Input_x0+1: Input_x0;
-      //y_00 <= (Input_y0[31])? ~Input_y0+1: Input_y0;
-      //z_00 <= (Input_z0[31])? ~Input_z0+1: Input_z0;
-      x_00 <= Input_x0;
-      y_00 <= Input_y0;
-      z_00 <= Input_z0;
+      //x_00 <= (Input_x[31])? ~Input_x+1: Input_x;
+      //y_00 <= (Input_y[31])? ~Input_y+1: Input_y;
+      //z_00 <= (Input_z[31])? ~Input_z+1: Input_z;
+      x_00 <= Input_x;
+      y_00 <= Input_y;
+      z_00 <= Input_z;
     end
   end
   
