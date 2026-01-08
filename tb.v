@@ -114,6 +114,10 @@ module tb;
     vec_vals[10][2*DATA_WIDTH-1:   DATA_WIDTH]=  25;
     vec_vals[10][3*DATA_WIDTH-1: 2*DATA_WIDTH]=  75;
     vec_vals[10][4*DATA_WIDTH-1: 3*DATA_WIDTH]=   1;
+    vec_vals[11][  DATA_WIDTH-1:            0]=  25;
+    vec_vals[11][2*DATA_WIDTH-1:   DATA_WIDTH]=  25;
+    vec_vals[11][3*DATA_WIDTH-1: 2*DATA_WIDTH]= 125;
+    vec_vals[11][4*DATA_WIDTH-1: 3*DATA_WIDTH]=   1;
     /*
     for (i=7; i<12; i=i+1) begin
       vec_vals[i][  DATA_WIDTH-1:            0]  = (4*i + 0 + 512);  // 低8位，自然截斷
@@ -134,7 +138,7 @@ module tb;
       @(posedge aclk);
     end
 
-    for (i=0; i<11; i=i+1) begin
+    for (i=0; i<12; i=i+1) begin
       s_tdata <= vec_vals[i];
       s_tlast <= (i==4) ? 1'b1 : 1'b0;
       @(posedge aclk);
