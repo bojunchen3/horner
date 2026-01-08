@@ -2,9 +2,10 @@ module process #(
   parameter integer DATA_WIDTH = 16,
   parameter integer OUT_WIDTH  = 16,
   parameter integer LANES      = 4,
-  parameter integer PIPE_LAT   = 46,
+  parameter integer PIPE_LAT   = 44,
   parameter integer ORI_NUM    = 3,
-  parameter integer INT_NUM    = 6
+  parameter integer INT_NUM    = 6,
+  parameter integer CAL_NUM    = 3
 )(
   input  wire                        aclk,
   input  wire                        aresetn,
@@ -40,8 +41,8 @@ module process #(
   reg [3:0]            mat_idx, next_mat_idx;
   reg                  ip_load_matrix;
 
-  reg [PIPE_LAT-1:0] vld_sr;
-  reg [PIPE_LAT-1:0] lst_sr;
+  //reg [PIPE_LAT-1:0] vld_sr;
+  //reg [PIPE_LAT-1:0] lst_sr;
 
   // -------------------------
   // next_state
@@ -89,18 +90,20 @@ module process #(
     if(!aresetn) begin
       state   <= ST_IDLE;
       mat_idx <= 4'd0;
-      vld_sr  <= {PIPE_LAT{1'b0}};
-      lst_sr  <= {PIPE_LAT{1'b0}};
+      //vld_sr  <= {PIPE_LAT{1'b0}};
+      //lst_sr  <= {PIPE_LAT{1'b0}};
     end else begin
       state   <= next_state;
       mat_idx <= next_mat_idx;
-      if(state == ST_STREAM) begin
+      /*
+      if(next_state == ST_STREAM) begin
         vld_sr <= {vld_sr[PIPE_LAT-2:0], s_hand};
         lst_sr <= {lst_sr[PIPE_LAT-2:0], (s_hand & s_tlast)};
       end else begin
         vld_sr <= {PIPE_LAT{1'b0}};
         lst_sr <= {PIPE_LAT{1'b0}};
       end
+      */
     end
   end
 
@@ -141,7 +144,7 @@ module process #(
       ip_vector = {LANES*DATA_WIDTH{1'b0}};
   end
 
-  reg  [5:0] input_count;
+  reg  [7:0] input_count;
   always @(posedge aclk) begin
     if(state == ST_STREAM)
       input_count <= input_count + 1;
@@ -162,15 +165,15 @@ module process #(
     end    
   end
 
-  wire [OUT_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
+  wire signed [OUT_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
 
-  reg  [OUT_WIDTH-1:0] ori_x [0: ORI_NUM-1];
-  reg  [OUT_WIDTH-1:0] ori_y [0: ORI_NUM-1]; 
-  reg  [OUT_WIDTH-1:0] ori_z [0: ORI_NUM-1];
+  reg  signed [OUT_WIDTH-1:0] ori_x [0: ORI_NUM-1];
+  reg  signed [OUT_WIDTH-1:0] ori_y [0: ORI_NUM-1]; 
+  reg  signed [OUT_WIDTH-1:0] ori_z [0: ORI_NUM-1];
 
-  reg  [OUT_WIDTH-1:0] int_x [0: INT_NUM-1];
-  reg  [OUT_WIDTH-1:0] int_y [0: INT_NUM-1]; 
-  reg  [OUT_WIDTH-1:0] int_z [0: INT_NUM-1];
+  reg  signed [OUT_WIDTH-1:0] int_x [0: INT_NUM-1];
+  reg  signed [OUT_WIDTH-1:0] int_y [0: INT_NUM-1]; 
+  reg  signed [OUT_WIDTH-1:0] int_z [0: INT_NUM-1];
 
   always @(posedge aclk)begin
     if(input_count > 5 && input_count < ORI_NUM+6) begin
@@ -201,13 +204,13 @@ module process #(
   );
 
   ////////// o[0] - xa //////////
-  wire [OUT_WIDTH-1:0] diff_o0_x = ori_x[0] - normalize_x;
-  wire [OUT_WIDTH-1:0] diff_o0_y = ori_y[0] - normalize_y;
-  wire [OUT_WIDTH-1:0] diff_o0_z = ori_z[0] - normalize_z;
+  wire [OUT_WIDTH:0] diff_o0_x = ori_x[0] - normalize_x;
+  wire [OUT_WIDTH:0] diff_o0_y = ori_y[0] - normalize_y;
+  wire [OUT_WIDTH:0] diff_o0_z = ori_z[0] - normalize_z;
 
-  reg [OUT_WIDTH-1:0] diff_o0_x_r[0:37];
-  reg [OUT_WIDTH-1:0] diff_o0_y_r[0:37];
-  reg [OUT_WIDTH-1:0] diff_o0_z_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o0_x_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o0_y_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o0_z_r[0:37];
 
   always @(posedge aclk) begin
     diff_o0_x_r[0] <= diff_o0_x;
@@ -220,9 +223,9 @@ module process #(
     end
   end
 
-  wire [15:0] cordic_o0_x = diff_o0_x[15]? (~diff_o0_x+1): diff_o0_x; // q16
-  wire [15:0] cordic_o0_y = diff_o0_y[15]? (~diff_o0_y+1): diff_o0_y; // q16
-  wire [15:0] cordic_o0_z = diff_o0_z[15]? (~diff_o0_z+1): diff_o0_z; // q16
+  wire [16:0] cordic_o0_x = diff_o0_x[16]? (~diff_o0_x+1): diff_o0_x; // q16
+  wire [16:0] cordic_o0_y = diff_o0_y[16]? (~diff_o0_y+1): diff_o0_y; // q16
+  wire [16:0] cordic_o0_z = diff_o0_z[16]? (~diff_o0_z+1): diff_o0_z; // q16
 
   wire [31: 0] ro0;
   CORDIC_Vector cov_o0 (
@@ -243,13 +246,13 @@ module process #(
   );
 
   ////////// o[1] - xa //////////
-  wire [OUT_WIDTH-1:0] diff_o1_x = ori_x[1] - normalize_x;
-  wire [OUT_WIDTH-1:0] diff_o1_y = ori_y[1] - normalize_y;
-  wire [OUT_WIDTH-1:0] diff_o1_z = ori_z[1] - normalize_z;
+  wire [OUT_WIDTH:0] diff_o1_x = ori_x[1] - normalize_x;
+  wire [OUT_WIDTH:0] diff_o1_y = ori_y[1] - normalize_y;
+  wire [OUT_WIDTH:0] diff_o1_z = ori_z[1] - normalize_z;
 
-  reg  [OUT_WIDTH-1:0] diff_o1_x_r[0:37];
-  reg  [OUT_WIDTH-1:0] diff_o1_y_r[0:37];
-  reg  [OUT_WIDTH-1:0] diff_o1_z_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o1_x_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o1_y_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o1_z_r[0:37];
 
   always @(posedge aclk) begin
     diff_o1_x_r[0] <= diff_o1_x;
@@ -262,9 +265,9 @@ module process #(
     end
   end
 
-  wire [15:0] cordic_o1_x = diff_o1_x[15]? (~diff_o1_x+1): diff_o1_x; // q16
-  wire [15:0] cordic_o1_y = diff_o1_y[15]? (~diff_o1_y+1): diff_o1_y; // q16
-  wire [15:0] cordic_o1_z = diff_o1_z[15]? (~diff_o1_z+1): diff_o1_z; // q16
+  wire [16:0] cordic_o1_x = diff_o1_x[16]? (~diff_o1_x+1): diff_o1_x; // q16
+  wire [16:0] cordic_o1_y = diff_o1_y[16]? (~diff_o1_y+1): diff_o1_y; // q16
+  wire [16:0] cordic_o1_z = diff_o1_z[16]? (~diff_o1_z+1): diff_o1_z; // q16
 
   wire [31: 0] ro1;
   CORDIC_Vector cov_o1 (
@@ -285,13 +288,13 @@ module process #(
   );
 
   ////////// o[2] - xa //////////
-  wire [OUT_WIDTH-1:0] diff_o2_x = ori_x[2] - normalize_x;
-  wire [OUT_WIDTH-1:0] diff_o2_y = ori_y[2] - normalize_y;
-  wire [OUT_WIDTH-1:0] diff_o2_z = ori_z[2] - normalize_z;
+  wire [OUT_WIDTH:0] diff_o2_x = ori_x[2] - normalize_x;
+  wire [OUT_WIDTH:0] diff_o2_y = ori_y[2] - normalize_y;
+  wire [OUT_WIDTH:0] diff_o2_z = ori_z[2] - normalize_z;
 
-  reg [OUT_WIDTH-1:0] diff_o2_x_r[0:37];
-  reg [OUT_WIDTH-1:0] diff_o2_y_r[0:37];
-  reg [OUT_WIDTH-1:0] diff_o2_z_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o2_x_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o2_y_r[0:37];
+  reg  [OUT_WIDTH:0] diff_o2_z_r[0:37];
 
   always @(posedge aclk) begin
     diff_o2_x_r[0] <= diff_o2_x;
@@ -304,9 +307,9 @@ module process #(
     end
   end
 
-  wire [15:0] cordic_o2_x = diff_o2_x[15]? (~diff_o2_x+1): diff_o2_x; // q16
-  wire [15:0] cordic_o2_y = diff_o2_y[15]? (~diff_o2_y+1): diff_o2_y; // q16
-  wire [15:0] cordic_o2_z = diff_o2_z[15]? (~diff_o2_z+1): diff_o2_z; // q16
+  wire [16:0] cordic_o2_x = diff_o2_x[16]? (~diff_o2_x+1): diff_o2_x; // q16
+  wire [16:0] cordic_o2_y = diff_o2_y[16]? (~diff_o2_y+1): diff_o2_y; // q16
+  wire [16:0] cordic_o2_z = diff_o2_z[16]? (~diff_o2_z+1): diff_o2_z; // q16
 
   wire [31: 0] ro2;
   CORDIC_Vector cov_o2 (
@@ -326,29 +329,41 @@ module process #(
     .ans_q16(d1_2_q16) // q16
   );
 
-  wire signed [31:0] K_ZGx [0:ORI_NUM-1];
-  wire signed [31:0] K_ZGy [0:ORI_NUM-1];
-  wire signed [31:0] K_ZGz [0:ORI_NUM-1];
+  // delay one clock wait for K_Z
+  wire signed [31:0] K_ZGx_temp [0:ORI_NUM-1];
+  wire signed [31:0] K_ZGy_temp [0:ORI_NUM-1];
+  wire signed [31:0] K_ZGz_temp [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGx      [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGy      [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGz      [0:ORI_NUM-1];
 
-  mul_q16 u_mul0 (.a(d1_0_q16), .b($signed(diff_o0_x_r[37])), .y(K_ZGx[0]));
-  mul_q16 u_mul1 (.a(d1_1_q16), .b($signed(diff_o1_x_r[37])), .y(K_ZGx[1]));
-  mul_q16 u_mul2 (.a(d1_2_q16), .b($signed(diff_o2_x_r[37])), .y(K_ZGx[2]));
-  mul_q16 u_mul3 (.a(d1_0_q16), .b($signed(diff_o0_y_r[37])), .y(K_ZGy[0]));
-  mul_q16 u_mul4 (.a(d1_1_q16), .b($signed(diff_o1_y_r[37])), .y(K_ZGy[1]));
-  mul_q16 u_mul5 (.a(d1_2_q16), .b($signed(diff_o2_y_r[37])), .y(K_ZGy[2]));
-  mul_q16 u_mul6 (.a(d1_0_q16), .b($signed(diff_o0_z_r[37])), .y(K_ZGz[0]));
-  mul_q16 u_mul7 (.a(d1_1_q16), .b($signed(diff_o1_z_r[37])), .y(K_ZGz[1]));
-  mul_q16 u_mul8 (.a(d1_2_q16), .b($signed(diff_o2_z_r[37])), .y(K_ZGz[2]));
+  mul_q16 u_mul0 (.a(d1_0_q16), .b($signed(diff_o0_x_r[37])), .y(K_ZGx_temp[0]));
+  mul_q16 u_mul1 (.a(d1_1_q16), .b($signed(diff_o1_x_r[37])), .y(K_ZGx_temp[1]));
+  mul_q16 u_mul2 (.a(d1_2_q16), .b($signed(diff_o2_x_r[37])), .y(K_ZGx_temp[2]));
+  mul_q16 u_mul3 (.a(d1_0_q16), .b($signed(diff_o0_y_r[37])), .y(K_ZGy_temp[0]));
+  mul_q16 u_mul4 (.a(d1_1_q16), .b($signed(diff_o1_y_r[37])), .y(K_ZGy_temp[1]));
+  mul_q16 u_mul5 (.a(d1_2_q16), .b($signed(diff_o2_y_r[37])), .y(K_ZGy_temp[2]));
+  mul_q16 u_mul6 (.a(d1_0_q16), .b($signed(diff_o0_z_r[37])), .y(K_ZGz_temp[0]));
+  mul_q16 u_mul7 (.a(d1_1_q16), .b($signed(diff_o1_z_r[37])), .y(K_ZGz_temp[1]));
+  mul_q16 u_mul8 (.a(d1_2_q16), .b($signed(diff_o2_z_r[37])), .y(K_ZGz_temp[2]));
+
+  always @(posedge aclk) begin
+    for(i=0; i<3; i=i+1) begin
+      K_ZGx[i] <= K_ZGx_temp[i];
+      K_ZGy[i] <= K_ZGy_temp[i];
+      K_ZGz[i] <= K_ZGz_temp[i];
+    end
+  end
   
   wire signed [31:0] K_Z [0:(INT_NUM-2)*2-1];
   ////////// xa - i[0] //////////
-  wire [OUT_WIDTH-1:0] diff_x_i0 = normalize_x - int_x[0];
-  wire [OUT_WIDTH-1:0] diff_y_i0 = normalize_y - int_y[0];
-  wire [OUT_WIDTH-1:0] diff_z_i0 = normalize_z - int_z[0];
+  wire [OUT_WIDTH:0] diff_x_i0 = normalize_x - int_x[0];
+  wire [OUT_WIDTH:0] diff_y_i0 = normalize_y - int_y[0];
+  wire [OUT_WIDTH:0] diff_z_i0 = normalize_z - int_z[0];
 
-  wire [15:0] cordic_x_i0 = diff_x_i0[15]? (~diff_x_i0+1): diff_x_i0; // q16
-  wire [15:0] cordic_y_i0 = diff_y_i0[15]? (~diff_y_i0+1): diff_y_i0; // q16
-  wire [15:0] cordic_z_i0 = diff_z_i0[15]? (~diff_z_i0+1): diff_z_i0; // q16
+  wire [16:0] cordic_x_i0 = diff_x_i0[16]? (~diff_x_i0+1): diff_x_i0; // q16
+  wire [16:0] cordic_y_i0 = diff_y_i0[16]? (~diff_y_i0+1): diff_y_i0; // q16
+  wire [16:0] cordic_z_i0 = diff_z_i0[16]? (~diff_z_i0+1): diff_z_i0; // q16
 
   wire [31: 0] ri0;
   CORDIC_Vector cov_i0 (
@@ -360,7 +375,6 @@ module process #(
     .Output_xn (ri0) // q16
   );
 
-  wire [31:0] d0_q16;
   cubic_cov cc0 (
     .clk(aclk),
     .rst_n(aresetn),
@@ -369,13 +383,13 @@ module process #(
   );
 
   ////////// xa - i[1] //////////
-  wire [OUT_WIDTH-1:0] diff_x_i1 = normalize_x - int_x[1];
-  wire [OUT_WIDTH-1:0] diff_y_i1 = normalize_y - int_y[1];
-  wire [OUT_WIDTH-1:0] diff_z_i1 = normalize_z - int_z[1];
+  wire [OUT_WIDTH:0] diff_x_i1 = normalize_x - int_x[1];
+  wire [OUT_WIDTH:0] diff_y_i1 = normalize_y - int_y[1];
+  wire [OUT_WIDTH:0] diff_z_i1 = normalize_z - int_z[1];
 
-  wire [15:0] cordic_x_i1 = diff_x_i1[15]? (~diff_x_i1+1): diff_x_i1; // q16
-  wire [15:0] cordic_y_i1 = diff_y_i1[15]? (~diff_y_i1+1): diff_y_i1; // q16
-  wire [15:0] cordic_z_i1 = diff_z_i1[15]? (~diff_z_i1+1): diff_z_i1; // q16
+  wire [16:0] cordic_x_i1 = diff_x_i1[16]? (~diff_x_i1+1): diff_x_i1; // q16
+  wire [16:0] cordic_y_i1 = diff_y_i1[16]? (~diff_y_i1+1): diff_y_i1; // q16
+  wire [16:0] cordic_z_i1 = diff_z_i1[16]? (~diff_z_i1+1): diff_z_i1; // q16
 
   wire [31: 0] ri1;
   CORDIC_Vector cov_i1 (
@@ -387,7 +401,6 @@ module process #(
     .Output_xn (ri1) // q16
   );
 
-  wire [31:0] d1_q16;
   cubic_cov cc1 (
     .clk(aclk),
     .rst_n(aresetn),
@@ -395,25 +408,152 @@ module process #(
     .ans_q16(K_Z[1])
   );
 
+  ////////// xa - i[2] //////////
+  wire [OUT_WIDTH:0] diff_x_i2 = normalize_x - int_x[2];
+  wire [OUT_WIDTH:0] diff_y_i2 = normalize_y - int_y[2];
+  wire [OUT_WIDTH:0] diff_z_i2 = normalize_z - int_z[2];
+
+  wire [16:0] cordic_x_i2 = diff_x_i2[16]? (~diff_x_i2+1): diff_x_i2; // q16
+  wire [16:0] cordic_y_i2 = diff_y_i2[16]? (~diff_y_i2+1): diff_y_i2; // q16
+  wire [16:0] cordic_z_i2 = diff_z_i2[16]? (~diff_z_i2+1): diff_z_i2; // q16
+
+  wire [31: 0] ri2;
+  CORDIC_Vector cov_i2 (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x   (cordic_x_i2), // q16
+    .Input_y   (cordic_y_i2), // q16
+    .Input_z   (cordic_z_i2), // q16
+    .Output_xn (ri2) // q16
+  );
+
+  cubic_cov cc2 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(ri2),
+    .ans_q16(K_Z[2])
+  );
+
+  ////////// xa - i[3] //////////
+  wire [OUT_WIDTH:0] diff_x_i3 = normalize_x - int_x[3];
+  wire [OUT_WIDTH:0] diff_y_i3 = normalize_y - int_y[3];
+  wire [OUT_WIDTH:0] diff_z_i3 = normalize_z - int_z[3];
+
+  wire [16:0] cordic_x_i3 = diff_x_i3[16]? (~diff_x_i3+1): diff_x_i3; // q16
+  wire [16:0] cordic_y_i3 = diff_y_i3[16]? (~diff_y_i3+1): diff_y_i3; // q16
+  wire [16:0] cordic_z_i3 = diff_z_i3[16]? (~diff_z_i3+1): diff_z_i3; // q16
+
+  wire [31: 0] ri3;
+  CORDIC_Vector cov_i3 (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x   (cordic_x_i3), // q16
+    .Input_y   (cordic_y_i3), // q16
+    .Input_z   (cordic_z_i3), // q16
+    .Output_xn (ri3) // q16
+  );
+
+  cubic_cov cc3 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(ri3),
+    .ans_q16(K_Z[3])
+  );
+
+  ////////// xa - i[4] //////////
+  wire [OUT_WIDTH:0] diff_x_i4 = normalize_x - int_x[4]; // overflow
+  wire [OUT_WIDTH:0] diff_y_i4 = normalize_y - int_y[4];
+  wire [OUT_WIDTH:0] diff_z_i4 = normalize_z - int_z[4];
+
+  wire [16:0] cordic_x_i4 = diff_x_i4[16]? (~diff_x_i4+1): diff_x_i4; // q16
+  wire [16:0] cordic_y_i4 = diff_y_i4[16]? (~diff_y_i4+1): diff_y_i4; // q16
+  wire [16:0] cordic_z_i4 = diff_z_i4[16]? (~diff_z_i4+1): diff_z_i4; // q16
+
+  wire [31: 0] ri4;
+  CORDIC_Vector cov_i4 (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x   (cordic_x_i4), // q16
+    .Input_y   (cordic_y_i4), // q16
+    .Input_z   (cordic_z_i4), // q16
+    .Output_xn (ri4) // q16
+  );
+
+  cubic_cov cc4 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(ri4),
+    .ans_q16(K_Z[4])
+  );
+
+  ////////// xa - i[5] //////////
+  wire [OUT_WIDTH:0] diff_x_i5 = normalize_x - int_x[5];
+  wire [OUT_WIDTH:0] diff_y_i5 = normalize_y - int_y[5];
+  wire [OUT_WIDTH:0] diff_z_i5 = normalize_z - int_z[5];
+
+  wire [16:0] cordic_x_i5 = diff_x_i5[16]? (~diff_x_i5+1): diff_x_i5; // q16
+  wire [16:0] cordic_y_i5 = diff_y_i5[16]? (~diff_y_i5+1): diff_y_i5; // q16
+  wire [16:0] cordic_z_i5 = diff_z_i5[16]? (~diff_z_i5+1): diff_z_i5; // q16
+
+  wire [31: 0] ri5;
+  CORDIC_Vector cov_i5 (
+    .clk       (aclk),
+    .RST_N     (aresetn),
+    .Input_x   (cordic_x_i5), // q16
+    .Input_y   (cordic_y_i5), // q16
+    .Input_z   (cordic_z_i5), // q16
+    .Output_xn (ri5) // q16
+  );
+
+  cubic_cov cc5 (
+    .clk(aclk),
+    .rst_n(aresetn),
+    .r_q16(ri5),
+    .ans_q16(K_Z[5])
+  );
+
   wire [31:0] diff_K_Z [0:INT_NUM-3];
   assign diff_K_Z[0] = K_Z[0] - K_Z[1];
-
-  /*
-  assign K_ZGx[0] = ($signed(d1_0_q16) * $signed(diff_o0_x_r[37])) >>> 16;
-  assign K_ZGx[1] = ($signed(d1_1_q16) * $signed(diff_o1_x_r[37])) >>> 16;
-  assign K_ZGx[2] = ($signed(d1_2_q16) * $signed(diff_o2_x_r[37])) >>> 16;
-  assign K_ZGy[0] = ($signed(d1_0_q16) * $signed(diff_o0_y_r[37])) >>> 16;
-  assign K_ZGy[1] = ($signed(d1_1_q16) * $signed(diff_o1_y_r[37])) >>> 16;
-  assign K_ZGy[2] = ($signed(d1_2_q16) * $signed(diff_o2_y_r[37])) >>> 16;
-  assign K_ZGz[0] = ($signed(d1_0_q16) * $signed(diff_o0_z_r[37])) >>> 16;
-  assign K_ZGz[1] = ($signed(d1_1_q16) * $signed(diff_o1_z_r[37])) >>> 16;
-  assign K_ZGz[2] = ($signed(d1_2_q16) * $signed(diff_o2_z_r[37])) >>> 16;
-  */
+  assign diff_K_Z[1] = K_Z[0] - K_Z[2];
+  assign diff_K_Z[2] = K_Z[3] - K_Z[4];
+  assign diff_K_Z[3] = K_Z[3] - K_Z[5];
 
   //assign m_tdata = {normalize_z, normalize_y, normalize_x};
   //assign m_tdata = ($signed(d1_q16) * $signed(diff_x_r[37]));
+  //assign m_tvalid = vld_sr[PIPE_LAT-1];
+  //assign m_tlast  = lst_sr[PIPE_LAT-4];
   assign m_tdata = K_ZGx[0]; 
-  assign m_tvalid = vld_sr[PIPE_LAT-2];
-  assign m_tlast  = lst_sr[PIPE_LAT-2];
+  assign m_tvalid = (input_count > PIPE_LAT + ORI_NUM + INT_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + CAL_NUM)? 1: 0;
+  assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + CAL_NUM)? 1: 0;
+
+  wire [31:0] check0 [0:12];
+  assign check0[0]  =    K_ZGx[0] + 21642;
+  assign check0[1]  =    K_ZGx[1] + 62320;
+  assign check0[2]  =    K_ZGx[2] + 58268;
+  assign check0[3]  =    K_ZGy[0] + 60990;
+  assign check0[4]  =    K_ZGy[1] -  2710;
+  assign check0[5]  =    K_ZGy[2] + 35713;
+  assign check0[6]  =    K_ZGz[0] + 37381;
+  assign check0[7]  =    K_ZGz[1] + 40643;
+  assign check0[8]  =    K_ZGz[2] + 28194;
+  assign check0[9]  = diff_K_Z[0] - 10500;
+  assign check0[10] = diff_K_Z[1] +  3531;
+  assign check0[11] = diff_K_Z[2] - 10613;
+  assign check0[12] = diff_K_Z[3] - 10262;
+
+  wire [31:0] check1 [0:12];
+  assign check1[0]  =    K_ZGx[0] + 22342; 
+  assign check1[1]  =    K_ZGx[1] + 64119;
+  assign check1[2]  =    K_ZGx[2] + 59715;
+  assign check1[3]  =    K_ZGy[0] + 62965;
+  assign check1[4]  =    K_ZGy[1] -  2788;
+  assign check1[5]  =    K_ZGy[2] + 36600;
+  assign check1[6]  =    K_ZGz[0] + 34529;
+  assign check1[7]  =    K_ZGz[1] + 36241;
+  assign check1[8]  =    K_ZGz[2] + 25042;
+  assign check1[9]  = diff_K_Z[0] - 10248;
+  assign check1[10] = diff_K_Z[1] +  4168;
+  assign check1[11] = diff_K_Z[2] - 11285;
+  assign check1[12] = diff_K_Z[3] - 10854;
 
 endmodule
