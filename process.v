@@ -166,6 +166,9 @@ module process #(
   end
 
   wire signed [OUT_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
+  reg  signed [OUT_WIDTH-1:0] normalize_x_r [0:38];
+  reg  signed [OUT_WIDTH-1:0] normalize_y_r [0:38];
+  reg  signed [OUT_WIDTH-1:0] normalize_z_r [0:38];
 
   reg  signed [OUT_WIDTH-1:0] ori_x [0: ORI_NUM-1];
   reg  signed [OUT_WIDTH-1:0] ori_y [0: ORI_NUM-1]; 
@@ -174,6 +177,17 @@ module process #(
   reg  signed [OUT_WIDTH-1:0] int_x [0: INT_NUM-1];
   reg  signed [OUT_WIDTH-1:0] int_y [0: INT_NUM-1]; 
   reg  signed [OUT_WIDTH-1:0] int_z [0: INT_NUM-1];
+
+  always @(posedge aclk) begin
+    normalize_x_r[0] <= normalize_x;
+    normalize_y_r[0] <= normalize_y;
+    normalize_z_r[0] <= normalize_z;
+    for(i=0; i<38; i=i+1) begin
+      normalize_x_r[i+1] <= normalize_x_r[i];
+      normalize_y_r[i+1] <= normalize_y_r[i];
+      normalize_z_r[i+1] <= normalize_z_r[i];
+    end
+  end
 
   always @(posedge aclk)begin
     if(input_count > 5 && input_count < ORI_NUM+6) begin
@@ -337,15 +351,15 @@ module process #(
   reg  signed [31:0] K_ZGy      [0:ORI_NUM-1];
   reg  signed [31:0] K_ZGz      [0:ORI_NUM-1];
 
-  mul_q16 u_mul0 (.a(d1_0_q16), .b($signed(diff_o0_x_r[37])), .y(K_ZGx_temp[0]));
-  mul_q16 u_mul1 (.a(d1_1_q16), .b($signed(diff_o1_x_r[37])), .y(K_ZGx_temp[1]));
-  mul_q16 u_mul2 (.a(d1_2_q16), .b($signed(diff_o2_x_r[37])), .y(K_ZGx_temp[2]));
-  mul_q16 u_mul3 (.a(d1_0_q16), .b($signed(diff_o0_y_r[37])), .y(K_ZGy_temp[0]));
-  mul_q16 u_mul4 (.a(d1_1_q16), .b($signed(diff_o1_y_r[37])), .y(K_ZGy_temp[1]));
-  mul_q16 u_mul5 (.a(d1_2_q16), .b($signed(diff_o2_y_r[37])), .y(K_ZGy_temp[2]));
-  mul_q16 u_mul6 (.a(d1_0_q16), .b($signed(diff_o0_z_r[37])), .y(K_ZGz_temp[0]));
-  mul_q16 u_mul7 (.a(d1_1_q16), .b($signed(diff_o1_z_r[37])), .y(K_ZGz_temp[1]));
-  mul_q16 u_mul8 (.a(d1_2_q16), .b($signed(diff_o2_z_r[37])), .y(K_ZGz_temp[2]));
+  mul_q16 u_mul0 (.a($signed(d1_0_q16)), .b($signed(diff_o0_x_r[37])), .y(K_ZGx_temp[0]));
+  mul_q16 u_mul1 (.a($signed(d1_1_q16)), .b($signed(diff_o1_x_r[37])), .y(K_ZGx_temp[1]));
+  mul_q16 u_mul2 (.a($signed(d1_2_q16)), .b($signed(diff_o2_x_r[37])), .y(K_ZGx_temp[2]));
+  mul_q16 u_mul3 (.a($signed(d1_0_q16)), .b($signed(diff_o0_y_r[37])), .y(K_ZGy_temp[0]));
+  mul_q16 u_mul4 (.a($signed(d1_1_q16)), .b($signed(diff_o1_y_r[37])), .y(K_ZGy_temp[1]));
+  mul_q16 u_mul5 (.a($signed(d1_2_q16)), .b($signed(diff_o2_y_r[37])), .y(K_ZGy_temp[2]));
+  mul_q16 u_mul6 (.a($signed(d1_0_q16)), .b($signed(diff_o0_z_r[37])), .y(K_ZGz_temp[0]));
+  mul_q16 u_mul7 (.a($signed(d1_1_q16)), .b($signed(diff_o1_z_r[37])), .y(K_ZGz_temp[1]));
+  mul_q16 u_mul8 (.a($signed(d1_2_q16)), .b($signed(diff_o2_z_r[37])), .y(K_ZGz_temp[2]));
 
   always @(posedge aclk) begin
     for(i=0; i<3; i=i+1) begin
@@ -518,14 +532,41 @@ module process #(
   assign diff_K_Z[2] = K_Z[3] - K_Z[4];
   assign diff_K_Z[3] = K_Z[3] - K_Z[5];
 
+  wire [31:0] answer [0:3*ORI_NUM+INT_NUM];
+  mul_q16 u_mul9  (.a($signed(  90764)), .b($signed(        K_ZGx[ 0])), .y(answer[ 0]));
+  mul_q16 u_mul10 (.a($signed(-156769)), .b($signed(        K_ZGx[ 1])), .y(answer[ 1]));
+  mul_q16 u_mul11 (.a($signed(-102156)), .b($signed(        K_ZGx[ 2])), .y(answer[ 2]));
+  mul_q16 u_mul12 (.a($signed(  21288)), .b($signed(        K_ZGy[ 0])), .y(answer[ 3]));
+  mul_q16 u_mul13 (.a($signed(  10942)), .b($signed(        K_ZGy[ 1])), .y(answer[ 4]));
+  mul_q16 u_mul14 (.a($signed(   1842)), .b($signed(        K_ZGy[ 2])), .y(answer[ 5]));
+  mul_q16 u_mul15 (.a($signed(  62610)), .b($signed(        K_ZGz[ 0])), .y(answer[ 6]));
+  mul_q16 u_mul16 (.a($signed( -30465)), .b($signed(        K_ZGz[ 1])), .y(answer[ 7]));
+  mul_q16 u_mul17 (.a($signed(  29427)), .b($signed(        K_ZGz[ 2])), .y(answer[ 8]));
+  mul_q16 u_mul18 (.a($signed(-792988)), .b($signed(     diff_K_Z[ 0])), .y(answer[ 9]));
+  mul_q16 u_mul19 (.a($signed(1132107)), .b($signed(     diff_K_Z[ 1])), .y(answer[10]));
+  mul_q16 u_mul20 (.a($signed(-337532)), .b($signed(     diff_K_Z[ 2])), .y(answer[11]));
+  mul_q16 u_mul21 (.a($signed( 408508)), .b($signed(     diff_K_Z[ 3])), .y(answer[12]));
+  mul_q16 u_mul22 (.a($signed( -36278)), .b($signed(normalize_x_r[38])), .y(answer[13]));
+  mul_q16 u_mul23 (.a($signed( -37493)), .b($signed(normalize_y_r[38])), .y(answer[14]));
+  mul_q16 u_mul24 (.a($signed(  88212)), .b($signed(normalize_z_r[38])), .y(answer[15]));
+  wire [31:0] field = (answer[ 0] + answer[ 1]) + 
+                      (answer[ 2] + answer[ 3]) +
+                      (answer[ 4] + answer[ 5]) +
+                      (answer[ 6] + answer[ 7]) +
+                      (answer[ 8] + answer[ 9]) +
+                      (answer[10] + answer[11]) +
+                      (answer[12] + answer[13]) +
+                      (answer[14] + answer[15]);
+
   //assign m_tdata = {normalize_z, normalize_y, normalize_x};
   //assign m_tdata = ($signed(d1_q16) * $signed(diff_x_r[37]));
   //assign m_tvalid = vld_sr[PIPE_LAT-1];
   //assign m_tlast  = lst_sr[PIPE_LAT-4];
-  assign m_tdata = K_ZGx[0]; 
+  assign m_tdata = field; 
   assign m_tvalid = (input_count > PIPE_LAT + ORI_NUM + INT_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + CAL_NUM)? 1: 0;
   assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + CAL_NUM)? 1: 0;
 
+  /*
   wire [31:0] check0 [0:12];
   assign check0[0]  =    K_ZGx[0] + 21642;
   assign check0[1]  =    K_ZGx[1] + 62320;
@@ -555,5 +596,21 @@ module process #(
   assign check1[10] = diff_K_Z[1] +  4168;
   assign check1[11] = diff_K_Z[2] - 11285;
   assign check1[12] = diff_K_Z[3] - 10854;
+
+  wire [31:0] check2 [0:12];
+  assign check2[0]  = answer[ 0] +  29972; 
+  assign check2[1]  = answer[ 1] - 149075;
+  assign check2[2]  = answer[ 2] -  90828;
+  assign check2[3]  = answer[ 3] +  19811;
+  assign check2[4]  = answer[ 4] -    452;
+  assign check2[5]  = answer[ 5] +   1004;
+  assign check2[6]  = answer[ 6] +  35712;
+  assign check2[7]  = answer[ 7] -  18894;
+  assign check2[8]  = answer[ 8] +  12660;
+  assign check2[9]  = answer[ 9] + 127053;
+  assign check2[10] = answer[10] +  60998;
+  assign check2[11] = answer[11] +  54662;
+  assign check2[12] = answer[12] -  63967;
+  */
 
 endmodule
