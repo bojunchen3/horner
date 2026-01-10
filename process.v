@@ -5,7 +5,7 @@ module process #(
   parameter integer PIPE_LAT   = 44,
   parameter integer ORI_NUM    = 3,
   parameter integer INT_NUM    = 6,
-  parameter integer CAL_NUM    = 3
+  parameter integer CAL_NUM    = 8000
 )(
   input  wire                        aclk,
   input  wire                        aresetn,
@@ -144,7 +144,7 @@ module process #(
       ip_vector = {LANES*DATA_WIDTH{1'b0}};
   end
 
-  reg  [7:0] input_count;
+  reg  [15:0] input_count;
   always @(posedge aclk) begin
     if(state == ST_STREAM)
       input_count <= input_count + 1;
