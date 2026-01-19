@@ -79,7 +79,10 @@ module process #(
     else if(next_state == ST_LOAD && s_hand) begin
       if(mat_idx <= 4'd12)
         next_mat_idx = mat_idx + 4'd4;
-    end
+      else
+        next_mat_idx = 4'd0;
+    end else
+      next_mat_idx = 4'd0;
   end
 
   // -------------------------
