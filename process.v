@@ -5,6 +5,7 @@ module process #(
   parameter integer PIPE_LAT   = 44,
   parameter integer ORI_NUM    = 3,
   parameter integer INT_NUM    = 6,
+  parameter integer LAY_NUM    = 2,
   parameter integer CAL_NUM    = 8000
 )(
   input  wire                        aclk,
@@ -372,7 +373,7 @@ module process #(
     end
   end
   
-  wire signed [31:0] K_Z [0:(INT_NUM-2)*2-1];
+  wire signed [31:0] K_Z [0:INT_NUM-1];
   ////////// xa - i[0] //////////
   wire [OUT_WIDTH:0] diff_x_i0 = normalize_x - int_x[0];
   wire [OUT_WIDTH:0] diff_y_i0 = normalize_y - int_y[0];
@@ -561,13 +562,34 @@ module process #(
                       (answer[12] + answer[13]) +
                       (answer[14] + answer[15]);
 
-  //assign m_tdata = {normalize_z, normalize_y, normalize_x};
-  //assign m_tdata = ($signed(d1_q16) * $signed(diff_x_r[37]));
-  //assign m_tvalid = vld_sr[PIPE_LAT-1];
-  //assign m_tlast  = lst_sr[PIPE_LAT-4];
-  assign m_tdata = field; 
-  assign m_tvalid = (input_count > PIPE_LAT + ORI_NUM + INT_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + CAL_NUM)? 1: 0;
-  assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + CAL_NUM)? 1: 0;
+  //wire [31:0] layer1 = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 1)? field: layer1;
+  //wire [31:0] layer2 = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM)?     field: layer2;
+
+  reg [31:0] layer1, layer2;
+  always @(posedge aclk) begin
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 1)
+      layer1 <= field;
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM)
+      layer2 <= field;
+  end
+  
+  reg [2:0] label;
+  always @(posedge aclk) begin
+    if ($signed(field) <= $signed(layer1))
+      label <= 3;
+    else if ($signed(field) <= $signed(layer2))
+      label <= 2;
+    else
+      label <= 1;
+  end
+
+  assign m_tdata = label;
+  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + 1 && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM + 1)? 1: 0;
+  assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM + 1)? 1: 0;
+
+  //assign m_tdata = field;
+  //assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
+  //assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
 
   /*
   wire [31:0] check0 [0:12];
@@ -615,5 +637,4 @@ module process #(
   assign check2[11] = answer[11] +  54662;
   assign check2[12] = answer[12] -  63967;
   */
-
 endmodule
