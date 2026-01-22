@@ -44,7 +44,9 @@ module tb;
   always #5 aclk = ~aclk; // 100MHz
   
   integer i;
-  reg [DATA_WIDTH-1:0] mat_vals [0:11];
+  reg [64:0]                 CAL_NUM;
+  reg [DATA_WIDTH*4-1:0]     weight_vals [0:15];
+  reg [DATA_WIDTH-1:0]       mat_vals [0:11];
   reg [LANES*DATA_WIDTH-1:0] vec_vals [0:13];
 
   initial begin
@@ -55,6 +57,26 @@ module tb;
     s_tlast  = 1'b0;
     m_tready = 1'b1; // forever = 1
 
+    // CAL_NUM
+    CAL_NUM = 3;
+
+    // weight data q16
+    weight_vals[ 0] =   90764;
+    weight_vals[ 1] = -156769;
+    weight_vals[ 2] = -102156;
+    weight_vals[ 3] =   21288;
+    weight_vals[ 4] =   10942;
+    weight_vals[ 5] =    1842;
+    weight_vals[ 6] =   62610;
+    weight_vals[ 7] =  -30465;
+    weight_vals[ 8] =   29427;
+    weight_vals[ 9] = -792988;
+    weight_vals[10] = 1132107;
+    weight_vals[11] = -337532;
+    weight_vals[12] =  408508;
+    weight_vals[13] =  -36278;
+    weight_vals[14] =  -37493;
+    weight_vals[15] =   88212;
     // matrix data q16
     mat_vals[0]  = 41; 
     mat_vals[1]  =  0;
@@ -114,6 +136,18 @@ module tb;
     vec_vals[10][2*DATA_WIDTH-1:   DATA_WIDTH] = 460;
     vec_vals[10][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 760;
     vec_vals[10][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    //vec_vals[11][  DATA_WIDTH-1:            0] =  25; // input
+    //vec_vals[11][2*DATA_WIDTH-1:   DATA_WIDTH] =  25;
+    //vec_vals[11][3*DATA_WIDTH-1: 2*DATA_WIDTH] =  25;
+    //vec_vals[11][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    //vec_vals[12][  DATA_WIDTH-1:            0] =  25;
+    //vec_vals[12][2*DATA_WIDTH-1:   DATA_WIDTH] =  25;
+    //vec_vals[12][3*DATA_WIDTH-1: 2*DATA_WIDTH] =  75;
+    //vec_vals[12][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
+    //vec_vals[13][  DATA_WIDTH-1:            0] =  25;
+    //vec_vals[13][2*DATA_WIDTH-1:   DATA_WIDTH] =  25;
+    //vec_vals[13][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 125;
+    //vec_vals[13][4*DATA_WIDTH-1: 3*DATA_WIDTH] =   1;
     vec_vals[11][  DATA_WIDTH-1:            0] = 200; // input
     vec_vals[11][2*DATA_WIDTH-1:   DATA_WIDTH] =   0;
     vec_vals[11][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 600;
@@ -140,6 +174,15 @@ module tb;
 
     @(posedge aclk);
     s_tvalid <= 1'b1;
+    s_tdata  <= CAL_NUM;
+    @(posedge aclk);
+
+    for (i=0; i<16; i=i+1) begin
+      s_tdata <= weight_vals[i];
+      s_tlast <= 1'b0;
+      @(posedge aclk);
+    end
+
     for (i=0; i<3; i=i+1) begin
       s_tdata <= {mat_vals[i*4+3], mat_vals[i*4+2], mat_vals[i*4+1], mat_vals[i*4+0]};
       s_tlast <= 1'b0;
@@ -148,26 +191,63 @@ module tb;
 
     for (i=0; i<14; i=i+1) begin
       s_tdata <= vec_vals[i];
-      s_tlast <= (i==4) ? 1'b1 : 1'b0;
+      s_tlast <= (i==14) ? 1'b1 : 1'b0;
       @(posedge aclk);
     end
     s_tvalid <= 1'b0;
     s_tlast  <= 1'b0;
 
-    repeat (8100) @(posedge aclk);
+    repeat (50) @(posedge aclk);
 
     // run again
     @(posedge aclk);
     s_tvalid <= 1'b1;
+    s_tdata  <= CAL_NUM;
+    @(posedge aclk);
+
+    for (i=0; i<16; i=i+1) begin
+      s_tdata <= weight_vals[i];
+      s_tlast <= 1'b0;
+      @(posedge aclk);
+    end
+
     for (i=0; i<3; i=i+1) begin
       s_tdata <= {mat_vals[i*4+3], mat_vals[i*4+2], mat_vals[i*4+1], mat_vals[i*4+0]};
       s_tlast <= 1'b0;
       @(posedge aclk);
     end
 
-    for (i=0; i<5; i=i+1) begin
+    for (i=0; i<14; i=i+1) begin
       s_tdata <= vec_vals[i];
-      s_tlast <= (i==4) ? 1'b1 : 1'b0;
+      s_tlast <= (i==14) ? 1'b1 : 1'b0;
+      @(posedge aclk);
+    end
+    s_tvalid <= 1'b0;
+    s_tlast  <= 1'b0;
+
+    repeat (50) @(posedge aclk);
+
+    // run again
+    @(posedge aclk);
+    s_tvalid <= 1'b1;
+    s_tdata  <= CAL_NUM;
+    @(posedge aclk);
+
+    for (i=0; i<16; i=i+1) begin
+      s_tdata <= weight_vals[i];
+      s_tlast <= 1'b0;
+      @(posedge aclk);
+    end
+
+    for (i=0; i<3; i=i+1) begin
+      s_tdata <= {mat_vals[i*4+3], mat_vals[i*4+2], mat_vals[i*4+1], mat_vals[i*4+0]};
+      s_tlast <= 1'b0;
+      @(posedge aclk);
+    end
+
+    for (i=0; i<14; i=i+1) begin
+      s_tdata <= vec_vals[i];
+      s_tlast <= (i==14) ? 1'b1 : 1'b0;
       @(posedge aclk);
     end
     s_tvalid <= 1'b0;

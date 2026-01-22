@@ -2,11 +2,10 @@ module process #(
   parameter integer DATA_WIDTH = 16,
   parameter integer OUT_WIDTH  = 16,
   parameter integer LANES      = 4,
-  parameter integer PIPE_LAT   = 44,
+  parameter integer PIPE_LAT   = 45,
   parameter integer ORI_NUM    = 3,
   parameter integer INT_NUM    = 6,
-  parameter integer LAY_NUM    = 2,
-  parameter integer CAL_NUM    = 8000
+  parameter integer LAY_NUM    = 2
 )(
   input  wire                        aclk,
   input  wire                        aresetn,
@@ -18,7 +17,7 @@ module process #(
   input  wire                        s_tlast,
 
   // AXIS Master (to DMA S2MM)
-  output wire [LANES*OUT_WIDTH-1:0]  m_tdata,
+  output wire [7:0]                  m_tdata,
   output wire                        m_tvalid,
   output wire                        m_tlast
 );
@@ -33,32 +32,40 @@ module process #(
   wire   s_hand   = s_tvalid & s_tready;
 
   localparam [1:0] ST_IDLE   = 2'b00;
-  localparam [1:0] ST_LOAD   = 2'b01;
-  localparam [1:0] ST_STREAM = 2'b10;
+  localparam [1:0] ST_WEIGHT = 2'b01;
+  localparam [1:0] ST_LOAD   = 2'b10;
+  localparam [1:0] ST_STREAM = 2'b11;
 
   reg [1:0] state, next_state;
 
-  reg [DATA_WIDTH-1:0] mat [0:11];
-  reg [3:0]            mat_idx, next_mat_idx;
-  reg                  ip_load_matrix;
+  reg [4:0]              weight_idx, next_weight_idx;
+  reg [DATA_WIDTH*4-1:0] weight [0:15];
+  reg [DATA_WIDTH-1:0]   mat [0:11];
+  reg [3:0]              mat_idx, next_mat_idx;
+  reg                    ip_load_matrix;
 
-  //reg [PIPE_LAT-1:0] vld_sr;
-  //reg [PIPE_LAT-1:0] lst_sr;
 
   // -------------------------
   // next_state
   // -------------------------
   always @(*) begin
-    next_state = state;
     case(state)
       ST_IDLE:   begin
                    // 等第一個輸入握手再進入 LOAD
-                   if(s_hand) next_state = ST_LOAD;
+                   if(s_hand)
+                     next_state = ST_WEIGHT;
+                   else
+                     next_state = ST_IDLE;
+                 end
+      ST_WEIGHT: begin
+                   if((weight_idx == 5'd17) && s_hand)
+                     next_state = ST_LOAD;
+                   else
+                     next_state = ST_WEIGHT;
                  end
       ST_LOAD:   begin
                    // 每拍固定 4 個元素，裝滿 16 個就進 STREAM
-                   // 若本拍裝滿（mat_idx==12 且 s_hand），下拍轉 STREAM
-                   if((mat_idx == 4'd8) && s_hand)
+                   if((mat_idx == 4'd12) && s_hand)
                      next_state = ST_STREAM;
                    else
                      next_state = ST_LOAD;
@@ -66,9 +73,26 @@ module process #(
       ST_STREAM: begin
                    if(m_tlast)
                      next_state = ST_IDLE; // 簡單起見，永遠停在 STREAM
+                   else
+                     next_state = ST_STREAM;
                  end
       default:   next_state = ST_IDLE;
     endcase
+  end
+
+  // -------------------------
+  // next_weight_idx
+  // -------------------------
+  always @(*) begin
+    if(next_state == ST_IDLE)
+      next_weight_idx = 5'd0;
+    else if(next_state == ST_WEIGHT && s_hand) begin
+      if(weight_idx < 5'd17)
+        next_weight_idx = weight_idx + 5'd1;
+      else
+        next_weight_idx = 5'd0;
+    end else
+      next_weight_idx = 5'd0;
   end
 
   // -------------------------
@@ -78,7 +102,7 @@ module process #(
     if(next_state == ST_IDLE)
       next_mat_idx = 4'd0;
     else if(next_state == ST_LOAD && s_hand) begin
-      if(mat_idx <= 4'd12)
+      if(mat_idx < 4'd12)
         next_mat_idx = mat_idx + 4'd4;
       else
         next_mat_idx = 4'd0;
@@ -92,37 +116,57 @@ module process #(
   integer i;
   always @(posedge aclk or negedge aresetn) begin
     if(!aresetn) begin
-      state   <= ST_IDLE;
-      mat_idx <= 4'd0;
-      //vld_sr  <= {PIPE_LAT{1'b0}};
-      //lst_sr  <= {PIPE_LAT{1'b0}};
+      state      <= ST_IDLE;
+      weight_idx <= 5'd0;
+      mat_idx    <= 4'd0;
     end else begin
-      state   <= next_state;
-      mat_idx <= next_mat_idx;
-      /*
-      if(next_state == ST_STREAM) begin
-        vld_sr <= {vld_sr[PIPE_LAT-2:0], s_hand};
-        lst_sr <= {lst_sr[PIPE_LAT-2:0], (s_hand & s_tlast)};
-      end else begin
-        vld_sr <= {PIPE_LAT{1'b0}};
-        lst_sr <= {PIPE_LAT{1'b0}};
-      end
-      */
+      state      <= next_state;
+      weight_idx <= next_weight_idx;
+      mat_idx    <= next_mat_idx;
     end
   end
 
-  always @(negedge aclk or negedge aresetn) begin
+  reg [63:0] CAL_NUM;
+  always @(posedge aclk) begin
+    if(!aresetn)
+      CAL_NUM <= 64'd0;
+    else begin
+      if(next_state == ST_WEIGHT && weight_idx == 5'd0 && s_hand)
+        CAL_NUM <= s_tdata;
+    end
+  end
+
+  always @(posedge aclk) begin
+    if(!aresetn)
+      for(i=0; i<16; i=i+1)
+        weight[i] <= {64{1'b0}};
+    else begin
+      if(next_state == ST_WEIGHT && weight_idx > 5'd0 && s_hand)
+        weight[weight_idx - 1] <= s_tdata;
+    end
+  end
+
+  always @(*) begin
+    if (!aresetn)
+      ip_load_matrix = 0;
+    else begin
+      if ((next_state == ST_LOAD || state == ST_LOAD) && s_hand)
+        ip_load_matrix = 1;
+      else
+        ip_load_matrix = 0;
+    end    
+  end
+
+  always @(posedge aclk) begin
     if(!aresetn)
       for(i=0; i<12; i=i+1)
         mat[i] <= {DATA_WIDTH{1'b0}};
     else begin
-      if(ip_load_matrix) begin
-        if(mat_idx <= 4'd8) begin
-          mat[mat_idx+0] <= lane0;
-          mat[mat_idx+1] <= lane1;
-          mat[mat_idx+2] <= lane2;
-          mat[mat_idx+3] <= lane3;
-        end
+      if(next_state == ST_LOAD && s_hand) begin
+        mat[mat_idx+0] <= lane0;
+        mat[mat_idx+1] <= lane1;
+        mat[mat_idx+2] <= lane2;
+        mat[mat_idx+3] <= lane3;
       end
     end
   end
@@ -142,7 +186,7 @@ module process #(
   
   reg  [LANES*DATA_WIDTH-1:0] ip_vector;
   always @(*) begin
-    if(state == ST_STREAM)
+    if(next_state == ST_STREAM)
       ip_vector = s_tdata;
     else
       ip_vector = {LANES*DATA_WIDTH{1'b0}};
@@ -154,19 +198,6 @@ module process #(
       input_count <= input_count + 1;
     else
       input_count <= 0;
-  end
-
-  always @(*) begin
-    if (!aresetn)
-      ip_load_matrix = 0;
-    else begin
-      if (state == ST_STREAM)
-        ip_load_matrix = 0;
-      else if (s_hand)
-        ip_load_matrix = 1;
-      else
-        ip_load_matrix = 0;
-    end    
   end
 
   wire signed [OUT_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
@@ -194,14 +225,14 @@ module process #(
   end
 
   always @(posedge aclk)begin
-    if(input_count > 5 && input_count < ORI_NUM+6) begin
-      ori_x[input_count - 6] <= normalize_x;  
-      ori_y[input_count - 6] <= normalize_y; 
-      ori_z[input_count - 6] <= normalize_z; 
+    if(input_count > 4 && input_count < ORI_NUM + 5) begin
+      ori_x[input_count - 5] <= normalize_x;  
+      ori_y[input_count - 5] <= normalize_y; 
+      ori_z[input_count - 5] <= normalize_z; 
     end else begin
-      int_x[input_count - 6 - ORI_NUM] <= normalize_x;  
-      int_y[input_count - 6 - ORI_NUM] <= normalize_y; 
-      int_z[input_count - 6 - ORI_NUM] <= normalize_z; 
+      int_x[input_count - 5 - ORI_NUM] <= normalize_x;  
+      int_y[input_count - 5 - ORI_NUM] <= normalize_y; 
+      int_z[input_count - 5 - ORI_NUM] <= normalize_z; 
     end
   end
 
@@ -537,43 +568,44 @@ module process #(
   assign diff_K_Z[3] = K_Z[3] - K_Z[5];
 
   wire [31:0] answer [0:3*ORI_NUM+INT_NUM];
-  mul_q16 u_mul9  (.a($signed(  90764)), .b($signed(        K_ZGx[ 0])), .y(answer[ 0]));
-  mul_q16 u_mul10 (.a($signed(-156769)), .b($signed(        K_ZGx[ 1])), .y(answer[ 1]));
-  mul_q16 u_mul11 (.a($signed(-102156)), .b($signed(        K_ZGx[ 2])), .y(answer[ 2]));
-  mul_q16 u_mul12 (.a($signed(  21288)), .b($signed(        K_ZGy[ 0])), .y(answer[ 3]));
-  mul_q16 u_mul13 (.a($signed(  10942)), .b($signed(        K_ZGy[ 1])), .y(answer[ 4]));
-  mul_q16 u_mul14 (.a($signed(   1842)), .b($signed(        K_ZGy[ 2])), .y(answer[ 5]));
-  mul_q16 u_mul15 (.a($signed(  62610)), .b($signed(        K_ZGz[ 0])), .y(answer[ 6]));
-  mul_q16 u_mul16 (.a($signed( -30465)), .b($signed(        K_ZGz[ 1])), .y(answer[ 7]));
-  mul_q16 u_mul17 (.a($signed(  29427)), .b($signed(        K_ZGz[ 2])), .y(answer[ 8]));
-  mul_q16 u_mul18 (.a($signed(-792988)), .b($signed(     diff_K_Z[ 0])), .y(answer[ 9]));
-  mul_q16 u_mul19 (.a($signed(1132107)), .b($signed(     diff_K_Z[ 1])), .y(answer[10]));
-  mul_q16 u_mul20 (.a($signed(-337532)), .b($signed(     diff_K_Z[ 2])), .y(answer[11]));
-  mul_q16 u_mul21 (.a($signed( 408508)), .b($signed(     diff_K_Z[ 3])), .y(answer[12]));
-  mul_q16 u_mul22 (.a($signed( -36278)), .b($signed(normalize_x_r[38])), .y(answer[13]));
-  mul_q16 u_mul23 (.a($signed( -37493)), .b($signed(normalize_y_r[38])), .y(answer[14]));
-  mul_q16 u_mul24 (.a($signed(  88212)), .b($signed(normalize_z_r[38])), .y(answer[15]));
-  wire [31:0] field = (answer[ 0] + answer[ 1]) + 
-                      (answer[ 2] + answer[ 3]) +
-                      (answer[ 4] + answer[ 5]) +
-                      (answer[ 6] + answer[ 7]) +
-                      (answer[ 8] + answer[ 9]) +
-                      (answer[10] + answer[11]) +
-                      (answer[12] + answer[13]) +
-                      (answer[14] + answer[15]);
+  mul_q16 u_mul9  (.a($signed(weight[ 0])), .b($signed(        K_ZGx[ 0])), .y(answer[ 0]));
+  mul_q16 u_mul10 (.a($signed(weight[ 1])), .b($signed(        K_ZGx[ 1])), .y(answer[ 1]));
+  mul_q16 u_mul11 (.a($signed(weight[ 2])), .b($signed(        K_ZGx[ 2])), .y(answer[ 2]));
+  mul_q16 u_mul12 (.a($signed(weight[ 3])), .b($signed(        K_ZGy[ 0])), .y(answer[ 3]));
+  mul_q16 u_mul13 (.a($signed(weight[ 4])), .b($signed(        K_ZGy[ 1])), .y(answer[ 4]));
+  mul_q16 u_mul14 (.a($signed(weight[ 5])), .b($signed(        K_ZGy[ 2])), .y(answer[ 5]));
+  mul_q16 u_mul15 (.a($signed(weight[ 6])), .b($signed(        K_ZGz[ 0])), .y(answer[ 6]));
+  mul_q16 u_mul16 (.a($signed(weight[ 7])), .b($signed(        K_ZGz[ 1])), .y(answer[ 7]));
+  mul_q16 u_mul17 (.a($signed(weight[ 8])), .b($signed(        K_ZGz[ 2])), .y(answer[ 8]));
+  mul_q16 u_mul18 (.a($signed(weight[ 9])), .b($signed(     diff_K_Z[ 0])), .y(answer[ 9]));
+  mul_q16 u_mul19 (.a($signed(weight[10])), .b($signed(     diff_K_Z[ 1])), .y(answer[10]));
+  mul_q16 u_mul20 (.a($signed(weight[11])), .b($signed(     diff_K_Z[ 2])), .y(answer[11]));
+  mul_q16 u_mul21 (.a($signed(weight[12])), .b($signed(     diff_K_Z[ 3])), .y(answer[12]));
+  mul_q16 u_mul22 (.a($signed(weight[13])), .b($signed(normalize_x_r[38])), .y(answer[13]));
+  mul_q16 u_mul23 (.a($signed(weight[14])), .b($signed(normalize_y_r[38])), .y(answer[14]));
+  mul_q16 u_mul24 (.a($signed(weight[15])), .b($signed(normalize_z_r[38])), .y(answer[15]));
 
-  //wire [31:0] layer1 = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 1)? field: layer1;
-  //wire [31:0] layer2 = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM)?     field: layer2;
+  reg [31:0] field;
+  always @(posedge aclk) begin
+    field <= (answer[ 0] + answer[ 1]) + 
+             (answer[ 2] + answer[ 3]) +
+             (answer[ 4] + answer[ 5]) +
+             (answer[ 6] + answer[ 7]) +
+             (answer[ 8] + answer[ 9]) +
+             (answer[10] + answer[11]) +
+             (answer[12] + answer[13]) +
+             (answer[14] + answer[15]);
+  end
 
   reg [31:0] layer1, layer2;
   always @(posedge aclk) begin
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 1)
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 2)
       layer1 <= field;
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM)
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 1)
       layer2 <= field;
   end
   
-  reg [2:0] label;
+  reg [7:0] label;
   always @(posedge aclk) begin
     if ($signed(field) <= $signed(layer1))
       label <= 3;
@@ -583,15 +615,10 @@ module process #(
       label <= 1;
   end
 
-  assign m_tdata = label;
-  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + 1 && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM + 1)? 1: 0;
-  assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM + 1)? 1: 0;
+  assign m_tdata =  label;
+  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
+  assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
 
-  //assign m_tdata = field;
-  //assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
-  //assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
-
-  /*
   wire [31:0] check0 [0:12];
   assign check0[0]  =    K_ZGx[0] + 21642;
   assign check0[1]  =    K_ZGx[1] + 62320;
@@ -607,34 +634,4 @@ module process #(
   assign check0[11] = diff_K_Z[2] - 10613;
   assign check0[12] = diff_K_Z[3] - 10262;
 
-  wire [31:0] check1 [0:12];
-  assign check1[0]  =    K_ZGx[0] + 22342; 
-  assign check1[1]  =    K_ZGx[1] + 64119;
-  assign check1[2]  =    K_ZGx[2] + 59715;
-  assign check1[3]  =    K_ZGy[0] + 62965;
-  assign check1[4]  =    K_ZGy[1] -  2788;
-  assign check1[5]  =    K_ZGy[2] + 36600;
-  assign check1[6]  =    K_ZGz[0] + 34529;
-  assign check1[7]  =    K_ZGz[1] + 36241;
-  assign check1[8]  =    K_ZGz[2] + 25042;
-  assign check1[9]  = diff_K_Z[0] - 10248;
-  assign check1[10] = diff_K_Z[1] +  4168;
-  assign check1[11] = diff_K_Z[2] - 11285;
-  assign check1[12] = diff_K_Z[3] - 10854;
-
-  wire [31:0] check2 [0:12];
-  assign check2[0]  = answer[ 0] +  29972; 
-  assign check2[1]  = answer[ 1] - 149075;
-  assign check2[2]  = answer[ 2] -  90828;
-  assign check2[3]  = answer[ 3] +  19811;
-  assign check2[4]  = answer[ 4] -    452;
-  assign check2[5]  = answer[ 5] +   1004;
-  assign check2[6]  = answer[ 6] +  35712;
-  assign check2[7]  = answer[ 7] -  18894;
-  assign check2[8]  = answer[ 8] +  12660;
-  assign check2[9]  = answer[ 9] + 127053;
-  assign check2[10] = answer[10] +  60998;
-  assign check2[11] = answer[11] +  54662;
-  assign check2[12] = answer[12] -  63967;
-  */
 endmodule

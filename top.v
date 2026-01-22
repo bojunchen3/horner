@@ -1,6 +1,6 @@
 module top #(
     parameter integer C_S00_AXIS_TDATA_WIDTH = 64,
-    parameter integer C_M00_AXIS_TDATA_WIDTH = 64
+    parameter integer C_M00_AXIS_TDATA_WIDTH = 8
 )(
     // AXI-Stream Slave （DMA MM2S → IP）
     input  wire                                 s00_axis_aclk,    // asynchronous
