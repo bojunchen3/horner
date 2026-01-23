@@ -1,8 +1,8 @@
 module process #(
   parameter integer DATA_WIDTH = 16,
-  parameter integer OUT_WIDTH  = 16,
+  parameter integer OUT_WIDTH  = 8,
   parameter integer LANES      = 4,
-  parameter integer PIPE_LAT   = 45,
+  parameter integer PIPE_LAT   = 47,
   parameter integer ORI_NUM    = 3,
   parameter integer INT_NUM    = 6,
   parameter integer LAY_NUM    = 2
@@ -17,7 +17,7 @@ module process #(
   input  wire                        s_tlast,
 
   // AXIS Master (to DMA S2MM)
-  output wire [7:0]                  m_tdata,
+  output wire [OUT_WIDTH-1:0]        m_tdata,
   output wire                        m_tvalid,
   output wire                        m_tlast
 );
@@ -31,18 +31,18 @@ module process #(
   assign s_tready = 1'b1;
   wire   s_hand   = s_tvalid & s_tready;
 
-  localparam [1:0] ST_IDLE   = 2'b00;
-  localparam [1:0] ST_WEIGHT = 2'b01;
-  localparam [1:0] ST_LOAD   = 2'b10;
-  localparam [1:0] ST_STREAM = 2'b11;
+  localparam [1:0] IDLE   = 2'b00;
+  localparam [1:0] WEIGHT = 2'b01;
+  localparam [1:0] LOAD   = 2'b10;
+  localparam [1:0] STREAM = 2'b11;
 
   reg [1:0] state, next_state;
 
-  reg [4:0]              weight_idx, next_weight_idx;
-  reg [DATA_WIDTH*4-1:0] weight [0:15];
-  reg [DATA_WIDTH-1:0]   mat [0:11];
-  reg [3:0]              mat_idx, next_mat_idx;
-  reg                    ip_load_matrix;
+  reg [4:0]                  weight_idx, next_weight_idx;
+  reg [DATA_WIDTH*LANES-1:0] weight [0:15];
+  reg [DATA_WIDTH-1:0]       mat [0:11];
+  reg [3:0]                  mat_idx, next_mat_idx;
+  reg                        ip_load_matrix;
 
 
   // -------------------------
@@ -50,33 +50,33 @@ module process #(
   // -------------------------
   always @(*) begin
     case(state)
-      ST_IDLE:   begin
+      IDLE:   begin
                    // 等第一個輸入握手再進入 LOAD
                    if(s_hand)
-                     next_state = ST_WEIGHT;
+                     next_state = WEIGHT;
                    else
-                     next_state = ST_IDLE;
+                     next_state = IDLE;
                  end
-      ST_WEIGHT: begin
+      WEIGHT: begin
                    if((weight_idx == 5'd17) && s_hand)
-                     next_state = ST_LOAD;
+                     next_state = LOAD;
                    else
-                     next_state = ST_WEIGHT;
+                     next_state = WEIGHT;
                  end
-      ST_LOAD:   begin
+      LOAD:   begin
                    // 每拍固定 4 個元素，裝滿 16 個就進 STREAM
                    if((mat_idx == 4'd12) && s_hand)
-                     next_state = ST_STREAM;
+                     next_state = STREAM;
                    else
-                     next_state = ST_LOAD;
+                     next_state = LOAD;
                  end
-      ST_STREAM: begin
+      STREAM: begin
                    if(m_tlast)
-                     next_state = ST_IDLE; // 簡單起見，永遠停在 STREAM
+                     next_state = IDLE; // 簡單起見，永遠停在 STREAM
                    else
-                     next_state = ST_STREAM;
+                     next_state = STREAM;
                  end
-      default:   next_state = ST_IDLE;
+      default:   next_state = IDLE;
     endcase
   end
 
@@ -84,9 +84,9 @@ module process #(
   // next_weight_idx
   // -------------------------
   always @(*) begin
-    if(next_state == ST_IDLE)
+    if(next_state == IDLE)
       next_weight_idx = 5'd0;
-    else if(next_state == ST_WEIGHT && s_hand) begin
+    else if(next_state == WEIGHT && s_hand) begin
       if(weight_idx < 5'd17)
         next_weight_idx = weight_idx + 5'd1;
       else
@@ -99,9 +99,9 @@ module process #(
   // next_mat_idx
   // -------------------------
   always @(*) begin
-    if(next_state == ST_IDLE)
+    if(next_state == IDLE)
       next_mat_idx = 4'd0;
-    else if(next_state == ST_LOAD && s_hand) begin
+    else if(next_state == LOAD && s_hand) begin
       if(mat_idx < 4'd12)
         next_mat_idx = mat_idx + 4'd4;
       else
@@ -116,7 +116,7 @@ module process #(
   integer i;
   always @(posedge aclk or negedge aresetn) begin
     if(!aresetn) begin
-      state      <= ST_IDLE;
+      state      <= IDLE;
       weight_idx <= 5'd0;
       mat_idx    <= 4'd0;
     end else begin
@@ -131,7 +131,7 @@ module process #(
     if(!aresetn)
       CAL_NUM <= 64'd0;
     else begin
-      if(next_state == ST_WEIGHT && weight_idx == 5'd0 && s_hand)
+      if(next_state == WEIGHT && weight_idx == 5'd0 && s_hand)
         CAL_NUM <= s_tdata;
     end
   end
@@ -141,7 +141,7 @@ module process #(
       for(i=0; i<16; i=i+1)
         weight[i] <= {64{1'b0}};
     else begin
-      if(next_state == ST_WEIGHT && weight_idx > 5'd0 && s_hand)
+      if(next_state == WEIGHT && weight_idx > 5'd0 && s_hand)
         weight[weight_idx - 1] <= s_tdata;
     end
   end
@@ -150,7 +150,7 @@ module process #(
     if (!aresetn)
       ip_load_matrix = 0;
     else begin
-      if ((next_state == ST_LOAD || state == ST_LOAD) && s_hand)
+      if ((next_state == LOAD || state == LOAD) && s_hand)
         ip_load_matrix = 1;
       else
         ip_load_matrix = 0;
@@ -162,7 +162,7 @@ module process #(
       for(i=0; i<12; i=i+1)
         mat[i] <= {DATA_WIDTH{1'b0}};
     else begin
-      if(next_state == ST_LOAD && s_hand) begin
+      if(next_state == LOAD && s_hand) begin
         mat[mat_idx+0] <= lane0;
         mat[mat_idx+1] <= lane1;
         mat[mat_idx+2] <= lane2;
@@ -182,11 +182,11 @@ module process #(
 
   // only in STREAM state = s_tdata, others = 0
   // wire [LANES*DATA_WIDTH-1:0] ip_vector =
-  //   (state == ST_STREAM) ? s_tdata : {LANES*DATA_WIDTH{1'b0}};
+  //   (state == STREAM) ? s_tdata : {LANES*DATA_WIDTH{1'b0}};
   
   reg  [LANES*DATA_WIDTH-1:0] ip_vector;
   always @(*) begin
-    if(next_state == ST_STREAM)
+    if(next_state == STREAM)
       ip_vector = s_tdata;
     else
       ip_vector = {LANES*DATA_WIDTH{1'b0}};
@@ -194,30 +194,30 @@ module process #(
 
   reg  [15:0] input_count;
   always @(posedge aclk) begin
-    if(state == ST_STREAM)
+    if(state == STREAM)
       input_count <= input_count + 1;
     else
       input_count <= 0;
   end
 
-  wire signed [OUT_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
-  reg  signed [OUT_WIDTH-1:0] normalize_x_r [0:38];
-  reg  signed [OUT_WIDTH-1:0] normalize_y_r [0:38];
-  reg  signed [OUT_WIDTH-1:0] normalize_z_r [0:38];
+  wire signed [DATA_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
+  reg  signed [DATA_WIDTH-1:0] normalize_x_r [0:39];
+  reg  signed [DATA_WIDTH-1:0] normalize_y_r [0:39];
+  reg  signed [DATA_WIDTH-1:0] normalize_z_r [0:39];
 
-  reg  signed [OUT_WIDTH-1:0] ori_x [0: ORI_NUM-1];
-  reg  signed [OUT_WIDTH-1:0] ori_y [0: ORI_NUM-1]; 
-  reg  signed [OUT_WIDTH-1:0] ori_z [0: ORI_NUM-1];
+  reg  signed [DATA_WIDTH-1:0] ori_x [0: ORI_NUM-1];
+  reg  signed [DATA_WIDTH-1:0] ori_y [0: ORI_NUM-1]; 
+  reg  signed [DATA_WIDTH-1:0] ori_z [0: ORI_NUM-1];
 
-  reg  signed [OUT_WIDTH-1:0] int_x [0: INT_NUM-1];
-  reg  signed [OUT_WIDTH-1:0] int_y [0: INT_NUM-1]; 
-  reg  signed [OUT_WIDTH-1:0] int_z [0: INT_NUM-1];
+  reg  signed [DATA_WIDTH-1:0] int_x [0: INT_NUM-1];
+  reg  signed [DATA_WIDTH-1:0] int_y [0: INT_NUM-1]; 
+  reg  signed [DATA_WIDTH-1:0] int_z [0: INT_NUM-1];
 
   always @(posedge aclk) begin
     normalize_x_r[0] <= normalize_x;
     normalize_y_r[0] <= normalize_y;
     normalize_z_r[0] <= normalize_z;
-    for(i=0; i<38; i=i+1) begin
+    for(i=0; i<39; i=i+1) begin
       normalize_x_r[i+1] <= normalize_x_r[i];
       normalize_y_r[i+1] <= normalize_y_r[i];
       normalize_z_r[i+1] <= normalize_z_r[i];
@@ -238,7 +238,7 @@ module process #(
 
   SRT #(
     .DATA_WIDTH (DATA_WIDTH),
-    .OUT_WIDTH  (OUT_WIDTH)
+    .OUT_WIDTH  (DATA_WIDTH)
   ) srt (
     .aclk        (aclk),
     .aresetn     (aresetn),
@@ -253,13 +253,13 @@ module process #(
   );
 
   ////////// o[0] - xa //////////
-  wire [OUT_WIDTH:0] diff_o0_x = ori_x[0] - normalize_x;
-  wire [OUT_WIDTH:0] diff_o0_y = ori_y[0] - normalize_y;
-  wire [OUT_WIDTH:0] diff_o0_z = ori_z[0] - normalize_z;
+  wire [DATA_WIDTH:0] diff_o0_x = ori_x[0] - normalize_x;
+  wire [DATA_WIDTH:0] diff_o0_y = ori_y[0] - normalize_y;
+  wire [DATA_WIDTH:0] diff_o0_z = ori_z[0] - normalize_z;
 
-  reg  [OUT_WIDTH:0] diff_o0_x_r[0:37];
-  reg  [OUT_WIDTH:0] diff_o0_y_r[0:37];
-  reg  [OUT_WIDTH:0] diff_o0_z_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o0_x_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o0_y_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o0_z_r[0:37];
 
   always @(posedge aclk) begin
     diff_o0_x_r[0] <= diff_o0_x;
@@ -295,13 +295,13 @@ module process #(
   );
 
   ////////// o[1] - xa //////////
-  wire [OUT_WIDTH:0] diff_o1_x = ori_x[1] - normalize_x;
-  wire [OUT_WIDTH:0] diff_o1_y = ori_y[1] - normalize_y;
-  wire [OUT_WIDTH:0] diff_o1_z = ori_z[1] - normalize_z;
+  wire [DATA_WIDTH:0] diff_o1_x = ori_x[1] - normalize_x;
+  wire [DATA_WIDTH:0] diff_o1_y = ori_y[1] - normalize_y;
+  wire [DATA_WIDTH:0] diff_o1_z = ori_z[1] - normalize_z;
 
-  reg  [OUT_WIDTH:0] diff_o1_x_r[0:37];
-  reg  [OUT_WIDTH:0] diff_o1_y_r[0:37];
-  reg  [OUT_WIDTH:0] diff_o1_z_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o1_x_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o1_y_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o1_z_r[0:37];
 
   always @(posedge aclk) begin
     diff_o1_x_r[0] <= diff_o1_x;
@@ -337,13 +337,13 @@ module process #(
   );
 
   ////////// o[2] - xa //////////
-  wire [OUT_WIDTH:0] diff_o2_x = ori_x[2] - normalize_x;
-  wire [OUT_WIDTH:0] diff_o2_y = ori_y[2] - normalize_y;
-  wire [OUT_WIDTH:0] diff_o2_z = ori_z[2] - normalize_z;
+  wire [DATA_WIDTH:0] diff_o2_x = ori_x[2] - normalize_x;
+  wire [DATA_WIDTH:0] diff_o2_y = ori_y[2] - normalize_y;
+  wire [DATA_WIDTH:0] diff_o2_z = ori_z[2] - normalize_z;
 
-  reg  [OUT_WIDTH:0] diff_o2_x_r[0:37];
-  reg  [OUT_WIDTH:0] diff_o2_y_r[0:37];
-  reg  [OUT_WIDTH:0] diff_o2_z_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o2_x_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o2_y_r[0:37];
+  reg  [DATA_WIDTH:0] diff_o2_z_r[0:37];
 
   always @(posedge aclk) begin
     diff_o2_x_r[0] <= diff_o2_x;
@@ -379,36 +379,42 @@ module process #(
   );
 
   // delay one clock wait for K_Z
-  wire signed [31:0] K_ZGx_temp [0:ORI_NUM-1];
-  wire signed [31:0] K_ZGy_temp [0:ORI_NUM-1];
-  wire signed [31:0] K_ZGz_temp [0:ORI_NUM-1];
-  reg  signed [31:0] K_ZGx      [0:ORI_NUM-1];
-  reg  signed [31:0] K_ZGy      [0:ORI_NUM-1];
-  reg  signed [31:0] K_ZGz      [0:ORI_NUM-1];
+  wire signed [31:0] K_ZGx_temp_0 [0:ORI_NUM-1];
+  wire signed [31:0] K_ZGy_temp_0 [0:ORI_NUM-1];
+  wire signed [31:0] K_ZGz_temp_0 [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGx_temp_1 [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGy_temp_1 [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGz_temp_1 [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGx        [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGy        [0:ORI_NUM-1];
+  reg  signed [31:0] K_ZGz        [0:ORI_NUM-1];
 
-  mul_q16 u_mul0 (.a($signed(d1_0_q16)), .b($signed(diff_o0_x_r[37])), .y(K_ZGx_temp[0]));
-  mul_q16 u_mul1 (.a($signed(d1_1_q16)), .b($signed(diff_o1_x_r[37])), .y(K_ZGx_temp[1]));
-  mul_q16 u_mul2 (.a($signed(d1_2_q16)), .b($signed(diff_o2_x_r[37])), .y(K_ZGx_temp[2]));
-  mul_q16 u_mul3 (.a($signed(d1_0_q16)), .b($signed(diff_o0_y_r[37])), .y(K_ZGy_temp[0]));
-  mul_q16 u_mul4 (.a($signed(d1_1_q16)), .b($signed(diff_o1_y_r[37])), .y(K_ZGy_temp[1]));
-  mul_q16 u_mul5 (.a($signed(d1_2_q16)), .b($signed(diff_o2_y_r[37])), .y(K_ZGy_temp[2]));
-  mul_q16 u_mul6 (.a($signed(d1_0_q16)), .b($signed(diff_o0_z_r[37])), .y(K_ZGz_temp[0]));
-  mul_q16 u_mul7 (.a($signed(d1_1_q16)), .b($signed(diff_o1_z_r[37])), .y(K_ZGz_temp[1]));
-  mul_q16 u_mul8 (.a($signed(d1_2_q16)), .b($signed(diff_o2_z_r[37])), .y(K_ZGz_temp[2]));
+  mul_q16 u_mul0 (.a($signed(d1_0_q16)), .b($signed(diff_o0_x_r[37])), .y(K_ZGx_temp_0[0]));
+  mul_q16 u_mul1 (.a($signed(d1_1_q16)), .b($signed(diff_o1_x_r[37])), .y(K_ZGx_temp_0[1]));
+  mul_q16 u_mul2 (.a($signed(d1_2_q16)), .b($signed(diff_o2_x_r[37])), .y(K_ZGx_temp_0[2]));
+  mul_q16 u_mul3 (.a($signed(d1_0_q16)), .b($signed(diff_o0_y_r[37])), .y(K_ZGy_temp_0[0]));
+  mul_q16 u_mul4 (.a($signed(d1_1_q16)), .b($signed(diff_o1_y_r[37])), .y(K_ZGy_temp_0[1]));
+  mul_q16 u_mul5 (.a($signed(d1_2_q16)), .b($signed(diff_o2_y_r[37])), .y(K_ZGy_temp_0[2]));
+  mul_q16 u_mul6 (.a($signed(d1_0_q16)), .b($signed(diff_o0_z_r[37])), .y(K_ZGz_temp_0[0]));
+  mul_q16 u_mul7 (.a($signed(d1_1_q16)), .b($signed(diff_o1_z_r[37])), .y(K_ZGz_temp_0[1]));
+  mul_q16 u_mul8 (.a($signed(d1_2_q16)), .b($signed(diff_o2_z_r[37])), .y(K_ZGz_temp_0[2]));
 
   always @(posedge aclk) begin
     for(i=0; i<3; i=i+1) begin
-      K_ZGx[i] <= K_ZGx_temp[i];
-      K_ZGy[i] <= K_ZGy_temp[i];
-      K_ZGz[i] <= K_ZGz_temp[i];
+      K_ZGx_temp_1[i] <= K_ZGx_temp_0[i];
+      K_ZGy_temp_1[i] <= K_ZGy_temp_0[i];
+      K_ZGz_temp_1[i] <= K_ZGz_temp_0[i];
+      K_ZGx[i] <= K_ZGx_temp_1[i];
+      K_ZGy[i] <= K_ZGy_temp_1[i];
+      K_ZGz[i] <= K_ZGz_temp_1[i];
     end
   end
   
   wire signed [31:0] K_Z [0:INT_NUM-1];
   ////////// xa - i[0] //////////
-  wire [OUT_WIDTH:0] diff_x_i0 = normalize_x - int_x[0];
-  wire [OUT_WIDTH:0] diff_y_i0 = normalize_y - int_y[0];
-  wire [OUT_WIDTH:0] diff_z_i0 = normalize_z - int_z[0];
+  wire [DATA_WIDTH:0] diff_x_i0 = normalize_x - int_x[0];
+  wire [DATA_WIDTH:0] diff_y_i0 = normalize_y - int_y[0];
+  wire [DATA_WIDTH:0] diff_z_i0 = normalize_z - int_z[0];
 
   wire [16:0] cordic_x_i0 = diff_x_i0[16]? (~diff_x_i0+1): diff_x_i0; // q16
   wire [16:0] cordic_y_i0 = diff_y_i0[16]? (~diff_y_i0+1): diff_y_i0; // q16
@@ -432,9 +438,9 @@ module process #(
   );
 
   ////////// xa - i[1] //////////
-  wire [OUT_WIDTH:0] diff_x_i1 = normalize_x - int_x[1];
-  wire [OUT_WIDTH:0] diff_y_i1 = normalize_y - int_y[1];
-  wire [OUT_WIDTH:0] diff_z_i1 = normalize_z - int_z[1];
+  wire [DATA_WIDTH:0] diff_x_i1 = normalize_x - int_x[1];
+  wire [DATA_WIDTH:0] diff_y_i1 = normalize_y - int_y[1];
+  wire [DATA_WIDTH:0] diff_z_i1 = normalize_z - int_z[1];
 
   wire [16:0] cordic_x_i1 = diff_x_i1[16]? (~diff_x_i1+1): diff_x_i1; // q16
   wire [16:0] cordic_y_i1 = diff_y_i1[16]? (~diff_y_i1+1): diff_y_i1; // q16
@@ -458,9 +464,9 @@ module process #(
   );
 
   ////////// xa - i[2] //////////
-  wire [OUT_WIDTH:0] diff_x_i2 = normalize_x - int_x[2];
-  wire [OUT_WIDTH:0] diff_y_i2 = normalize_y - int_y[2];
-  wire [OUT_WIDTH:0] diff_z_i2 = normalize_z - int_z[2];
+  wire [DATA_WIDTH:0] diff_x_i2 = normalize_x - int_x[2];
+  wire [DATA_WIDTH:0] diff_y_i2 = normalize_y - int_y[2];
+  wire [DATA_WIDTH:0] diff_z_i2 = normalize_z - int_z[2];
 
   wire [16:0] cordic_x_i2 = diff_x_i2[16]? (~diff_x_i2+1): diff_x_i2; // q16
   wire [16:0] cordic_y_i2 = diff_y_i2[16]? (~diff_y_i2+1): diff_y_i2; // q16
@@ -484,9 +490,9 @@ module process #(
   );
 
   ////////// xa - i[3] //////////
-  wire [OUT_WIDTH:0] diff_x_i3 = normalize_x - int_x[3];
-  wire [OUT_WIDTH:0] diff_y_i3 = normalize_y - int_y[3];
-  wire [OUT_WIDTH:0] diff_z_i3 = normalize_z - int_z[3];
+  wire [DATA_WIDTH:0] diff_x_i3 = normalize_x - int_x[3];
+  wire [DATA_WIDTH:0] diff_y_i3 = normalize_y - int_y[3];
+  wire [DATA_WIDTH:0] diff_z_i3 = normalize_z - int_z[3];
 
   wire [16:0] cordic_x_i3 = diff_x_i3[16]? (~diff_x_i3+1): diff_x_i3; // q16
   wire [16:0] cordic_y_i3 = diff_y_i3[16]? (~diff_y_i3+1): diff_y_i3; // q16
@@ -510,9 +516,9 @@ module process #(
   );
 
   ////////// xa - i[4] //////////
-  wire [OUT_WIDTH:0] diff_x_i4 = normalize_x - int_x[4]; // overflow
-  wire [OUT_WIDTH:0] diff_y_i4 = normalize_y - int_y[4];
-  wire [OUT_WIDTH:0] diff_z_i4 = normalize_z - int_z[4];
+  wire [DATA_WIDTH:0] diff_x_i4 = normalize_x - int_x[4]; // overflow
+  wire [DATA_WIDTH:0] diff_y_i4 = normalize_y - int_y[4];
+  wire [DATA_WIDTH:0] diff_z_i4 = normalize_z - int_z[4];
 
   wire [16:0] cordic_x_i4 = diff_x_i4[16]? (~diff_x_i4+1): diff_x_i4; // q16
   wire [16:0] cordic_y_i4 = diff_y_i4[16]? (~diff_y_i4+1): diff_y_i4; // q16
@@ -536,9 +542,9 @@ module process #(
   );
 
   ////////// xa - i[5] //////////
-  wire [OUT_WIDTH:0] diff_x_i5 = normalize_x - int_x[5];
-  wire [OUT_WIDTH:0] diff_y_i5 = normalize_y - int_y[5];
-  wire [OUT_WIDTH:0] diff_z_i5 = normalize_z - int_z[5];
+  wire [DATA_WIDTH:0] diff_x_i5 = normalize_x - int_x[5];
+  wire [DATA_WIDTH:0] diff_y_i5 = normalize_y - int_y[5];
+  wire [DATA_WIDTH:0] diff_z_i5 = normalize_z - int_z[5];
 
   wire [16:0] cordic_x_i5 = diff_x_i5[16]? (~diff_x_i5+1): diff_x_i5; // q16
   wire [16:0] cordic_y_i5 = diff_y_i5[16]? (~diff_y_i5+1): diff_y_i5; // q16
@@ -561,11 +567,19 @@ module process #(
     .ans_q16(K_Z[5])
   );
 
-  wire [31:0] diff_K_Z [0:INT_NUM-3];
-  assign diff_K_Z[0] = K_Z[0] - K_Z[1];
-  assign diff_K_Z[1] = K_Z[0] - K_Z[2];
-  assign diff_K_Z[2] = K_Z[3] - K_Z[4];
-  assign diff_K_Z[3] = K_Z[3] - K_Z[5];
+  //wire [31:0] diff_K_Z [0:INT_NUM-3];
+  //assign diff_K_Z[0] = K_Z[0] - K_Z[1];
+  //assign diff_K_Z[1] = K_Z[0] - K_Z[2];
+  //assign diff_K_Z[2] = K_Z[3] - K_Z[4];
+  //assign diff_K_Z[3] = K_Z[3] - K_Z[5];
+
+  reg [31:0] diff_K_Z [0:INT_NUM-3];
+  always @(posedge aclk) begin
+    diff_K_Z[0] <= K_Z[0] - K_Z[1];
+    diff_K_Z[1] <= K_Z[0] - K_Z[2];
+    diff_K_Z[2] <= K_Z[3] - K_Z[4];
+    diff_K_Z[3] <= K_Z[3] - K_Z[5];
+  end
 
   wire [31:0] answer [0:3*ORI_NUM+INT_NUM];
   mul_q16 u_mul9  (.a($signed(weight[ 0])), .b($signed(        K_ZGx[ 0])), .y(answer[ 0]));
@@ -581,20 +595,25 @@ module process #(
   mul_q16 u_mul19 (.a($signed(weight[10])), .b($signed(     diff_K_Z[ 1])), .y(answer[10]));
   mul_q16 u_mul20 (.a($signed(weight[11])), .b($signed(     diff_K_Z[ 2])), .y(answer[11]));
   mul_q16 u_mul21 (.a($signed(weight[12])), .b($signed(     diff_K_Z[ 3])), .y(answer[12]));
-  mul_q16 u_mul22 (.a($signed(weight[13])), .b($signed(normalize_x_r[38])), .y(answer[13]));
-  mul_q16 u_mul23 (.a($signed(weight[14])), .b($signed(normalize_y_r[38])), .y(answer[14]));
-  mul_q16 u_mul24 (.a($signed(weight[15])), .b($signed(normalize_z_r[38])), .y(answer[15]));
+  mul_q16 u_mul22 (.a($signed(weight[13])), .b($signed(normalize_x_r[39])), .y(answer[13]));
+  mul_q16 u_mul23 (.a($signed(weight[14])), .b($signed(normalize_y_r[39])), .y(answer[14]));
+  mul_q16 u_mul24 (.a($signed(weight[15])), .b($signed(normalize_z_r[39])), .y(answer[15]));
 
+  reg [31:0] add_temp1, add_temp2, add_temp3, add_temp4, add_temp5, add_temp6, add_temp7, add_temp8; 
   reg [31:0] field;
   always @(posedge aclk) begin
-    field <= (answer[ 0] + answer[ 1]) + 
-             (answer[ 2] + answer[ 3]) +
-             (answer[ 4] + answer[ 5]) +
-             (answer[ 6] + answer[ 7]) +
-             (answer[ 8] + answer[ 9]) +
-             (answer[10] + answer[11]) +
-             (answer[12] + answer[13]) +
-             (answer[14] + answer[15]);
+    add_temp1 <= answer[ 0] + answer[ 1];
+    add_temp2 <= answer[ 2] + answer[ 3];
+    add_temp3 <= answer[ 4] + answer[ 5];
+    add_temp4 <= answer[ 6] + answer[ 7];
+    add_temp5 <= answer[ 8] + answer[ 9];
+    add_temp6 <= answer[10] + answer[11];
+    add_temp7 <= answer[12] + answer[13];
+    add_temp8 <= answer[14] + answer[15];
+    field <= (add_temp1 + add_temp2) + 
+             (add_temp3 + add_temp4) +
+             (add_temp5 + add_temp6) +
+             (add_temp7 + add_temp8);
   end
 
   reg [31:0] layer1, layer2;
@@ -618,20 +637,5 @@ module process #(
   assign m_tdata =  label;
   assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
   assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
-
-  wire [31:0] check0 [0:12];
-  assign check0[0]  =    K_ZGx[0] + 21642;
-  assign check0[1]  =    K_ZGx[1] + 62320;
-  assign check0[2]  =    K_ZGx[2] + 58268;
-  assign check0[3]  =    K_ZGy[0] + 60990;
-  assign check0[4]  =    K_ZGy[1] -  2710;
-  assign check0[5]  =    K_ZGy[2] + 35713;
-  assign check0[6]  =    K_ZGz[0] + 37381;
-  assign check0[7]  =    K_ZGz[1] + 40643;
-  assign check0[8]  =    K_ZGz[2] + 28194;
-  assign check0[9]  = diff_K_Z[0] - 10500;
-  assign check0[10] = diff_K_Z[1] +  3531;
-  assign check0[11] = diff_K_Z[2] - 10613;
-  assign check0[12] = diff_K_Z[3] - 10262;
 
 endmodule
