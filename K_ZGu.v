@@ -1,8 +1,8 @@
 module K_ZGu #(
   parameter integer DATA_WIDTH = 16
 )(
-  input  wire                        clk,
-  input  wire                        rst_n,
+  input  wire                         clk,
+  input  wire                         rst_n,
   input  wire signed [DATA_WIDTH-1:0] ori_x,
   input  wire signed [DATA_WIDTH-1:0] ori_y,
   input  wire signed [DATA_WIDTH-1:0] ori_z,
@@ -10,9 +10,9 @@ module K_ZGu #(
   input  wire signed [DATA_WIDTH-1:0] normalize_y,
   input  wire signed [DATA_WIDTH-1:0] normalize_z,
   
-  output wire signed [31:0]          K_ZGx,
-  output wire signed [31:0]          K_ZGy,
-  output wire signed [31:0]          K_ZGz
+  output wire signed [31:0]           K_ZGx,
+  output wire signed [31:0]           K_ZGy,
+  output wire signed [31:0]           K_ZGz
 );
   
   integer i;

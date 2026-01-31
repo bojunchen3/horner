@@ -1,8 +1,8 @@
 module K_Z #(
   parameter integer DATA_WIDTH = 16
 )(
-  input  wire                        clk,
-  input  wire                        rst_n,
+  input  wire                         clk,
+  input  wire                         rst_n,
   input  wire signed [DATA_WIDTH-1:0] int_x,
   input  wire signed [DATA_WIDTH-1:0] int_y,
   input  wire signed [DATA_WIDTH-1:0] int_z,
