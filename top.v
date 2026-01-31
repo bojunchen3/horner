@@ -26,7 +26,6 @@ module top #(
         .aresetn  (aresetn),
         // Slave AXI-Stream
         .s_tdata  (s00_axis_tdata),
-        .s_tlast  (s00_axis_tlast),
         .s_tvalid (s00_axis_tvalid),
         .s_tready (s00_axis_tready),
         // Master AXI-Stream
