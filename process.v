@@ -2,8 +2,11 @@ module process #(
   parameter integer DATA_WIDTH = 16,
   parameter integer OUT_WIDTH  = 8,
   parameter integer LANES      = 4,
-  parameter integer PIPE_LAT   = 47,
-  parameter integer ORI_NUM    = 3,
+  parameter integer PIPE_LAT   = 49,
+  // parameter integer ORI_NUM    = 7,
+  // parameter integer INT_NUM    = 45,
+  // parameter integer LAY_NUM    = 5
+  parameter integer ORI_NUM    = 4,
   parameter integer INT_NUM    = 6,
   parameter integer LAY_NUM    = 2
 )(
@@ -21,6 +24,8 @@ module process #(
   output wire                        m_tlast
 );
 
+  parameter integer WEIGHT_NUM = 3*ORI_NUM + INT_NUM -LAY_NUM + 3;
+
   // lane0 LSB
   wire [DATA_WIDTH-1:0] lane0 = s_tdata[DATA_WIDTH*1-1:DATA_WIDTH*0];
   wire [DATA_WIDTH-1:0] lane1 = s_tdata[DATA_WIDTH*2-1:DATA_WIDTH*1];
@@ -37,8 +42,8 @@ module process #(
 
   reg [1:0] state, next_state;
 
-  reg [4:0]                  weight_idx, next_weight_idx;
-  reg [DATA_WIDTH*LANES-1:0] weight [0:15];
+  reg [5:0]                  weight_idx, next_weight_idx;
+  reg [DATA_WIDTH*LANES-1:0] weight [0:3*ORI_NUM+INT_NUM-LAY_NUM+2];
   reg [DATA_WIDTH-1:0]       mat [0:11];
   reg [3:0]                  mat_idx, next_mat_idx;
   reg                        ip_load_matrix;
@@ -57,7 +62,7 @@ module process #(
                      next_state = IDLE;
                  end
       WEIGHT: begin
-                   if((weight_idx == 5'd17) && s_hand)
+                   if((weight_idx == WEIGHT_NUM + 1) && s_hand)
                      next_state = LOAD;
                    else
                      next_state = WEIGHT;
@@ -86,7 +91,7 @@ module process #(
     if(next_state == IDLE)
       next_weight_idx = 5'd0;
     else if(next_state == WEIGHT && s_hand) begin
-      if(weight_idx < 5'd17)
+      if(weight_idx < WEIGHT_NUM + 1)
         next_weight_idx = weight_idx + 5'd1;
       else
         next_weight_idx = 5'd0;
@@ -276,7 +281,7 @@ module process #(
 
   // delay one clock wait for K_Z
   always @(posedge aclk) begin
-    for(i=0; i<3; i=i+1) begin
+    for(i=0; i<ORI_NUM; i=i+1) begin
       K_ZGx_temp_1[i] <= K_ZGx_temp_0[i];
       K_ZGy_temp_1[i] <= K_ZGy_temp_0[i];
       K_ZGz_temp_1[i] <= K_ZGz_temp_0[i];
@@ -304,47 +309,99 @@ module process #(
     end
   endgenerate
 
-  reg [31:0] diff_K_Z [0:INT_NUM-3];
+  integer k;
+  integer num_per_layer = INT_NUM / LAY_NUM;
+  reg [31:0] diff_K_Z [0:INT_NUM-LAY_NUM-1];
   always @(posedge aclk) begin
-    diff_K_Z[0] <= K_Z[0] - K_Z[1];
-    diff_K_Z[1] <= K_Z[0] - K_Z[2];
-    diff_K_Z[2] <= K_Z[3] - K_Z[4];
-    diff_K_Z[3] <= K_Z[3] - K_Z[5];
+    // diff_K_Z[0] <= K_Z[0] - K_Z[1];
+    // diff_K_Z[1] <= K_Z[0] - K_Z[2];
+    // diff_K_Z[2] <= K_Z[3] - K_Z[4];
+    // diff_K_Z[3] <= K_Z[3] - K_Z[5];
+    for(i=0; i<LAY_NUM; i=i+1) begin
+      for(k=1; k<num_per_layer; k=k+1)
+        diff_K_Z[(num_per_layer-1)*i+k-1] <= K_Z[num_per_layer*i] - K_Z[num_per_layer*i+k];
+    end
   end
 
-  wire [31:0] answer [0:3*ORI_NUM+INT_NUM];
-  mul_q16 u_mul9  (.a($signed(weight[ 0])), .b($signed(        K_ZGx[ 0])), .y(answer[ 0]));
-  mul_q16 u_mul10 (.a($signed(weight[ 1])), .b($signed(        K_ZGx[ 1])), .y(answer[ 1]));
-  mul_q16 u_mul11 (.a($signed(weight[ 2])), .b($signed(        K_ZGx[ 2])), .y(answer[ 2]));
-  mul_q16 u_mul12 (.a($signed(weight[ 3])), .b($signed(        K_ZGy[ 0])), .y(answer[ 3]));
-  mul_q16 u_mul13 (.a($signed(weight[ 4])), .b($signed(        K_ZGy[ 1])), .y(answer[ 4]));
-  mul_q16 u_mul14 (.a($signed(weight[ 5])), .b($signed(        K_ZGy[ 2])), .y(answer[ 5]));
-  mul_q16 u_mul15 (.a($signed(weight[ 6])), .b($signed(        K_ZGz[ 0])), .y(answer[ 6]));
-  mul_q16 u_mul16 (.a($signed(weight[ 7])), .b($signed(        K_ZGz[ 1])), .y(answer[ 7]));
-  mul_q16 u_mul17 (.a($signed(weight[ 8])), .b($signed(        K_ZGz[ 2])), .y(answer[ 8]));
-  mul_q16 u_mul18 (.a($signed(weight[ 9])), .b($signed(     diff_K_Z[ 0])), .y(answer[ 9]));
-  mul_q16 u_mul19 (.a($signed(weight[10])), .b($signed(     diff_K_Z[ 1])), .y(answer[10]));
-  mul_q16 u_mul20 (.a($signed(weight[11])), .b($signed(     diff_K_Z[ 2])), .y(answer[11]));
-  mul_q16 u_mul21 (.a($signed(weight[12])), .b($signed(     diff_K_Z[ 3])), .y(answer[12]));
-  mul_q16 u_mul22 (.a($signed(weight[13])), .b($signed(normalize_x_r[39])), .y(answer[13]));
-  mul_q16 u_mul23 (.a($signed(weight[14])), .b($signed(normalize_y_r[39])), .y(answer[14]));
-  mul_q16 u_mul24 (.a($signed(weight[15])), .b($signed(normalize_z_r[39])), .y(answer[15]));
+  wire [31:0] answer   [0:WEIGHT_NUM-1];
 
-  reg [31:0] add_temp1, add_temp2, add_temp3, add_temp4, add_temp5, add_temp6, add_temp7, add_temp8; 
+  generate
+    for (j = 0; j < ORI_NUM; j = j + 1) begin : gen_answer_ori
+      mul_q16 u_mul0  (.a($signed(weight[          j])), .b($signed(K_ZGx[j])), .y(answer[          j]));
+      mul_q16 u_mul1  (.a($signed(weight[  ORI_NUM+j])), .b($signed(K_ZGy[j])), .y(answer[  ORI_NUM+j]));
+      mul_q16 u_mul2  (.a($signed(weight[2*ORI_NUM+j])), .b($signed(K_ZGz[j])), .y(answer[2*ORI_NUM+j]));
+    end
+  endgenerate
+
+  generate
+    for (j = 0; j < INT_NUM - LAY_NUM; j = j + 1) begin : gen_answer_int
+      mul_q16 u_muli3 (.a($signed(weight[3*ORI_NUM + j])), .b($signed(diff_K_Z[j])), .y(answer[3*ORI_NUM + j]));
+    end
+  endgenerate
+
+  mul_q16 u_mul14 (.a($signed(weight[WEIGHT_NUM - 3])), .b($signed(normalize_x_r[39])), .y(answer[WEIGHT_NUM - 3]));
+  mul_q16 u_mul15 (.a($signed(weight[WEIGHT_NUM - 2])), .b($signed(normalize_y_r[39])), .y(answer[WEIGHT_NUM - 2]));
+  mul_q16 u_mul16 (.a($signed(weight[WEIGHT_NUM - 1])), .b($signed(normalize_z_r[39])), .y(answer[WEIGHT_NUM - 1]));
+
+  // mul_q16 u_mul0  (.a($signed(weight[ 0])), .b($signed(        K_ZGx[ 0])), .y(answer[ 0]));
+  // mul_q16 u_mul1  (.a($signed(weight[ 1])), .b($signed(        K_ZGx[ 1])), .y(answer[ 1]));
+  // mul_q16 u_mul2  (.a($signed(weight[ 2])), .b($signed(        K_ZGx[ 2])), .y(answer[ 2]));
+  // mul_q16 u_mul3  (.a($signed(weight[ 3])), .b($signed(        K_ZGy[ 0])), .y(answer[ 3]));
+  // mul_q16 u_mul4  (.a($signed(weight[ 4])), .b($signed(        K_ZGy[ 1])), .y(answer[ 4]));
+  // mul_q16 u_mul5  (.a($signed(weight[ 5])), .b($signed(        K_ZGy[ 2])), .y(answer[ 5]));
+  // mul_q16 u_mul6  (.a($signed(weight[ 6])), .b($signed(        K_ZGz[ 0])), .y(answer[ 6]));
+  // mul_q16 u_mul7  (.a($signed(weight[ 7])), .b($signed(        K_ZGz[ 1])), .y(answer[ 7]));
+  // mul_q16 u_mul8  (.a($signed(weight[ 8])), .b($signed(        K_ZGz[ 2])), .y(answer[ 8]));
+  // mul_q16 u_mul9  (.a($signed(weight[ 9])), .b($signed(     diff_K_Z[ 0])), .y(answer[ 9]));
+  // mul_q16 u_mul10 (.a($signed(weight[10])), .b($signed(     diff_K_Z[ 1])), .y(answer[10]));
+  // mul_q16 u_mul11 (.a($signed(weight[11])), .b($signed(     diff_K_Z[ 2])), .y(answer[11]));
+  // mul_q16 u_mul12 (.a($signed(weight[12])), .b($signed(     diff_K_Z[ 3])), .y(answer[12]));
+  // mul_q16 u_mul13 (.a($signed(weight[13])), .b($signed(normalize_x_r[39])), .y(answer[13]));
+  // mul_q16 u_mul14 (.a($signed(weight[14])), .b($signed(normalize_y_r[39])), .y(answer[14]));
+  // mul_q16 u_mul15 (.a($signed(weight[15])), .b($signed(normalize_z_r[39])), .y(answer[15]));
+
+  reg [31:0] answer_r [0:63];
+  reg [31:0] add_temp [0:19];
   reg [31:0] field;
+
   always @(posedge aclk) begin
-    add_temp1 <= answer[ 0] + answer[ 1];
-    add_temp2 <= answer[ 2] + answer[ 3];
-    add_temp3 <= answer[ 4] + answer[ 5];
-    add_temp4 <= answer[ 6] + answer[ 7];
-    add_temp5 <= answer[ 8] + answer[ 9];
-    add_temp6 <= answer[10] + answer[11];
-    add_temp7 <= answer[12] + answer[13];
-    add_temp8 <= answer[14] + answer[15];
-    field <= (add_temp1 + add_temp2) + 
-             (add_temp3 + add_temp4) +
-             (add_temp5 + add_temp6) +
-             (add_temp7 + add_temp8);
+    if(!aresetn)
+      for(i=0; i<64; i=i+1)
+        answer_r[i] <= 32'd0;
+    else
+      for(i=0; i<WEIGHT_NUM; i=i+1)
+        answer_r[i] <= answer[i];
+  end
+
+  always @(posedge aclk) begin
+    if(!aresetn)
+      for(i=0; i<20; i=i+1)
+        add_temp[i] <= 32'd0;
+    else begin
+      add_temp[ 0] <= (answer_r[ 0] + answer_r[ 1]) + (answer_r[ 2] + answer_r[ 3]);
+      add_temp[ 1] <= (answer_r[ 4] + answer_r[ 5]) + (answer_r[ 6] + answer_r[ 7]);
+      add_temp[ 2] <= (answer_r[ 8] + answer_r[ 9]) + (answer_r[10] + answer_r[11]);
+      add_temp[ 3] <= (answer_r[12] + answer_r[13]) + (answer_r[14] + answer_r[15]);
+      add_temp[ 4] <= (answer_r[16] + answer_r[17]) + (answer_r[18] + answer_r[19]);
+      add_temp[ 5] <= (answer_r[20] + answer_r[21]) + (answer_r[22] + answer_r[23]);
+      add_temp[ 6] <= (answer_r[24] + answer_r[25]) + (answer_r[26] + answer_r[27]);
+      add_temp[ 7] <= (answer_r[28] + answer_r[29]) + (answer_r[30] + answer_r[31]);
+      add_temp[ 8] <= (answer_r[32] + answer_r[33]) + (answer_r[34] + answer_r[35]);
+      add_temp[ 9] <= (answer_r[36] + answer_r[37]) + (answer_r[38] + answer_r[39]);
+      add_temp[10] <= (answer_r[40] + answer_r[41]) + (answer_r[42] + answer_r[43]);
+      add_temp[11] <= (answer_r[44] + answer_r[45]) + (answer_r[46] + answer_r[47]);
+      add_temp[12] <= (answer_r[48] + answer_r[49]) + (answer_r[50] + answer_r[51]);
+      add_temp[13] <= (answer_r[52] + answer_r[53]) + (answer_r[54] + answer_r[55]);
+      add_temp[14] <= (answer_r[56] + answer_r[57]) + (answer_r[58] + answer_r[59]);
+      add_temp[15] <= (answer_r[60] + answer_r[61]) + (answer_r[62] + answer_r[63]);
+
+      add_temp[16] <= (add_temp[ 0] + add_temp[ 1]) + (add_temp[ 2] + add_temp[ 3]);
+      add_temp[17] <= (add_temp[ 4] + add_temp[ 5]) + (add_temp[ 6] + add_temp[ 7]);
+      add_temp[18] <= (add_temp[ 8] + add_temp[ 9]) + (add_temp[10] + add_temp[11]);
+      add_temp[19] <= (add_temp[12] + add_temp[13]) + (add_temp[14] + add_temp[15]);
+
+      field <= (add_temp[16] + add_temp[17]) + (add_temp[18] + add_temp[19]);
+    end
   end
 
   reg [31:0] layer1, layer2;
