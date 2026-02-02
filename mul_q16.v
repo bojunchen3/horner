@@ -8,9 +8,12 @@ module mul_q16(
 
   wire signed [63:0] prod = $signed(a) * $signed(b);
   
-  wire [31:0] round = (prod < 0)? 32767: 32768;
+  // wire [31:0] round = (prod < 0)? 32767: 32768;
 
-  assign y = (prod + round) >>> 16;
+  // assign y = (prod + round) >>> 16;
+
+  assign y = prod >>> 16;
+
   /*
   wire signed [63:0] abs_prod = (prod < 0) ? -prod : prod;
 
