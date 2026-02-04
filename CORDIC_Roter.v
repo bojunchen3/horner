@@ -8,7 +8,6 @@ module CORDIC_Roter #(
   input      signed [31:0] Input_x_n_1,
   input      signed [31:0] Input_y_n_1,
   input      signed [31:0] Input_z_n_1,
-  input      signed [31:0] Input_rote_base,
   output reg signed [31:0] Output_x_n,
   output reg signed [31:0] Output_y_n,
   output reg signed [31:0] Output_z_n
