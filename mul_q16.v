@@ -4,8 +4,9 @@ module mul_q16(
   output wire signed [31:0] y   // Q16
 );
 
-  //localparam signed [63:0] HALF = 64'sd32768; // 2^15
-
+  // localparam signed [63:0] HALF = 64'sd32768; // 2^15
+  // 強制使用 DSP
+  // (* use_dsp = "yes" *) wire signed [63:0] prod = $signed(a) * $signed(b);
   wire signed [63:0] prod = $signed(a) * $signed(b);
   
   // wire [31:0] round = (prod < 0)? 32767: 32768;
