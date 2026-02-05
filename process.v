@@ -3,12 +3,12 @@ module process #(
   parameter integer OUT_WIDTH  = 8,
   parameter integer LANES      = 4,
   parameter integer PIPE_LAT   = 33,
-  // parameter integer ORI_NUM    = 8,
-  // parameter integer INT_NUM    = 35,
-  // parameter integer LAY_NUM    = 5
-  parameter integer ORI_NUM    = 4,
-  parameter integer INT_NUM    = 6,
-  parameter integer LAY_NUM    = 2
+  parameter integer ORI_NUM    = 8,
+  parameter integer INT_NUM    = 35,
+  parameter integer LAY_NUM    = 5
+  // parameter integer ORI_NUM    = 4,
+  // parameter integer INT_NUM    = 6,
+  // parameter integer LAY_NUM    = 2
 )(
   input  wire                        aclk,
   input  wire                        aresetn,
@@ -417,19 +417,31 @@ module process #(
     field <= $signed(add_temp[16] + add_temp[17]) + $signed(add_temp[18] + add_temp[19]);
   end
 
-  reg [35:0] layer1, layer2;
+  reg [35:0] layer1, layer2, layer3, layer4, layer5;
   always @(posedge aclk) begin
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 2)
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM)
       layer1 <= field;
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM - 1)
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 1)
       layer2 <= field;
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 2)
+      layer3 <= field;
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 3)
+      layer4 <= field;
+    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 4)
+      layer5 <= field;
   end
   
   reg [7:0] label;
   always @(posedge aclk) begin
     if ($signed(field) <= $signed(layer1))
-      label <= 3;
+      label <= 6;
     else if ($signed(field) <= $signed(layer2))
+      label <= 5;
+    else if ($signed(field) <= $signed(layer3))
+      label <= 4;
+    else if ($signed(field) <= $signed(layer4))
+      label <= 3;
+    else if ($signed(field) <= $signed(layer5))
       label <= 2;
     else
       label <= 1;
