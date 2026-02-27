@@ -27,12 +27,6 @@ module process #(
 
   parameter integer WEIGHT_NUM = 3*ORI_NUM + INT_NUM - LAY_NUM + 3;
 
-  // lane0 LSB
-  wire [DATA_WIDTH-1:0] lane0 = s_tdata[DATA_WIDTH*1-1:DATA_WIDTH*0];
-  wire [DATA_WIDTH-1:0] lane1 = s_tdata[DATA_WIDTH*2-1:DATA_WIDTH*1];
-  wire [DATA_WIDTH-1:0] lane2 = s_tdata[DATA_WIDTH*3-1:DATA_WIDTH*2];
-  wire [DATA_WIDTH-1:0] lane3 = s_tdata[DATA_WIDTH*4-1:DATA_WIDTH*3];
-
   assign s_tready = 1'b1;
   wire   s_hand   = s_tvalid & s_tready;
 
@@ -45,7 +39,7 @@ module process #(
 
   reg [5:0]                  weight_idx, next_weight_idx;
   reg [DATA_WIDTH*LANES-1:0] weight [0:3*ORI_NUM+INT_NUM-LAY_NUM+2];
-  reg [DATA_WIDTH-1:0]       mat [0:11];
+  reg [31:0]       mat [0:11];
   reg [3:0]                  mat_idx, next_mat_idx;
   reg                        ip_load_matrix;
 
@@ -108,7 +102,7 @@ module process #(
       next_mat_idx = 4'd0;
     else if(next_state == LOAD && s_hand) begin
       if(mat_idx < 4'd12)
-        next_mat_idx = mat_idx + 4'd4;
+        next_mat_idx = mat_idx + 4'd1;
       else
         next_mat_idx = 4'd0;
     end else
@@ -168,16 +162,13 @@ module process #(
         mat[i] <= {DATA_WIDTH{1'b0}};
     else begin
       if(next_state == LOAD && s_hand) begin
-        mat[mat_idx+0] <= lane0;
-        mat[mat_idx+1] <= lane1;
-        mat[mat_idx+2] <= lane2;
-        mat[mat_idx+3] <= lane3;
+        mat[mat_idx] <= s_tdata;
       end
     end
   end
 
   // matrix value
-  wire [DATA_WIDTH-1:0] a00, a01, a02, a03,
+  wire [31:0] a00, a01, a02, a03,
                         a10, a11, a12, a13,
                         a20, a21, a22, a23;
 

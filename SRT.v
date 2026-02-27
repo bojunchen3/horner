@@ -5,9 +5,9 @@ module SRT #(
     input  wire                  aclk,
     input  wire                  aresetn,
     input  wire                  load_matrix,
-    input  wire [DATA_WIDTH-1:0] a00, a01, a02, a03,
-    input  wire [DATA_WIDTH-1:0] a10, a11, a12, a13,
-    input  wire [DATA_WIDTH-1:0] a20, a21, a22, a23,
+    input  wire [31:0] a00, a01, a02, a03,
+    input  wire [31:0] a10, a11, a12, a13,
+    input  wire [31:0] a20, a21, a22, a23,
     input  wire [4*DATA_WIDTH-1:0] vector,
     output wire [OUT_WIDTH-1:0]  result0, result1, result2
 );

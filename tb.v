@@ -53,7 +53,7 @@ module tb;
   integer i;
   reg [64:0]                 CAL_NUM;
   reg [DATA_WIDTH*4-1:0]     weight_vals [0:WEIGHT_NUM-1];
-  reg [DATA_WIDTH-1:0]       mat_vals [0:11];
+  reg [63:0]       mat_vals [0:11];
   reg [LANES*DATA_WIDTH-1:0] vec_vals [0:VEC_NUM-1];
 
   initial begin
@@ -122,6 +122,10 @@ module tb;
     mat_vals[9]  =  0;
     mat_vals[10] = 41;
     mat_vals[11] = -17613;
+
+    for (i=0; i<12; i=i+1) begin
+      mat_vals[i] = mat_vals[i] <<< 16;
+    end
 
     // test vector
     for (i=0; i<VEC_NUM; i=i+1) begin
@@ -240,8 +244,8 @@ module tb;
       @(posedge aclk);
     end
 
-    for (i=0; i<3; i=i+1) begin
-      s_tdata <= {mat_vals[i*4+3], mat_vals[i*4+2], mat_vals[i*4+1], mat_vals[i*4+0]};
+    for (i=0; i<12; i=i+1) begin
+      s_tdata <= mat_vals[i];
       s_tlast <= 1'b0;
       @(posedge aclk);
     end
@@ -268,8 +272,8 @@ module tb;
       @(posedge aclk);
     end
 
-    for (i=0; i<3; i=i+1) begin
-      s_tdata <= {mat_vals[i*4+3], mat_vals[i*4+2], mat_vals[i*4+1], mat_vals[i*4+0]};
+    for (i=0; i<12; i=i+1) begin
+      s_tdata <= mat_vals[i];
       s_tlast <= 1'b0;
       @(posedge aclk);
     end
@@ -296,8 +300,8 @@ module tb;
       @(posedge aclk);
     end
 
-    for (i=0; i<3; i=i+1) begin
-      s_tdata <= {mat_vals[i*4+3], mat_vals[i*4+2], mat_vals[i*4+1], mat_vals[i*4+0]};
+    for (i=0; i<12; i=i+1) begin
+      s_tdata <= mat_vals[i];
       s_tlast <= 1'b0;
       @(posedge aclk);
     end

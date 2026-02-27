@@ -6,9 +6,9 @@ module SystolicArray #(
     input  wire                  aresetn,
     input  wire                  load_matrix,
     // 3x4 matrix
-    input  wire [DATA_WIDTH-1:0] a00, a01, a02, a03,
-    input  wire [DATA_WIDTH-1:0] a10, a11, a12, a13,
-    input  wire [DATA_WIDTH-1:0] a20, a21, a22, a23,
+    input  wire [31:0] a00, a01, a02, a03,
+    input  wire [31:0] a10, a11, a12, a13,
+    input  wire [31:0] a20, a21, a22, a23,
     // independent input
     input  wire [DATA_WIDTH-1:0] vec_in0,  // column 0
     input  wire [DATA_WIDTH-1:0] vec_in1,  // column 1
@@ -16,7 +16,7 @@ module SystolicArray #(
     input  wire [DATA_WIDTH-1:0] vec_in3,  // column 3
     output wire [OUT_WIDTH-1:0]  result0, result1, result2
 );
-    wire [DATA_WIDTH-1:0] mat_val [0:2][0:3];
+    wire [31:0] mat_val [0:2][0:3];
     assign mat_val[0][0]=a00; assign mat_val[0][1]=a01; assign mat_val[0][2]=a02; assign mat_val[0][3]=a03;
     assign mat_val[1][0]=a10; assign mat_val[1][1]=a11; assign mat_val[1][2]=a12; assign mat_val[1][3]=a13;
     assign mat_val[2][0]=a20; assign mat_val[2][1]=a21; assign mat_val[2][2]=a22; assign mat_val[2][3]=a23;
