@@ -1,11 +1,12 @@
 module process #(
-  parameter integer DATA_WIDTH = 16,
-  parameter integer OUT_WIDTH  = 8,
-  parameter integer LANES      = 4,
-  parameter integer PIPE_LAT   = 33,
-  parameter integer ORI_NUM    = 8,
-  parameter integer INT_NUM    = 35,
-  parameter integer LAY_NUM    = 5
+  parameter integer DATA_WIDTH   = 16,
+  parameter integer OUT_WIDTH    = 8,
+  parameter integer LANES        = 4,
+  parameter integer PIPE_LAT     = 35,
+  parameter integer NORMAL_DEALY = 26,
+  parameter integer ORI_NUM      = 8,
+  parameter integer INT_NUM      = 35,
+  parameter integer LAY_NUM      = 5
   // parameter integer ORI_NUM    = 4,
   // parameter integer INT_NUM    = 6,
   // parameter integer LAY_NUM    = 2
@@ -205,9 +206,9 @@ module process #(
   end
 
   wire signed [DATA_WIDTH-1:0] normalize_x, normalize_y, normalize_z;
-  reg  signed [DATA_WIDTH-1:0] normalize_x_r [0:23];
-  reg  signed [DATA_WIDTH-1:0] normalize_y_r [0:23];
-  reg  signed [DATA_WIDTH-1:0] normalize_z_r [0:23];
+  reg  signed [DATA_WIDTH-1:0] normalize_x_r [0:NORMAL_DEALY-1];
+  reg  signed [DATA_WIDTH-1:0] normalize_y_r [0:NORMAL_DEALY-1];
+  reg  signed [DATA_WIDTH-1:0] normalize_z_r [0:NORMAL_DEALY-1];
 
   reg  signed [DATA_WIDTH-1:0] ori_x [0: ORI_NUM-1];
   reg  signed [DATA_WIDTH-1:0] ori_y [0: ORI_NUM-1]; 
@@ -237,7 +238,7 @@ module process #(
     normalize_x_r[0] <= normalize_x;
     normalize_y_r[0] <= normalize_y;
     normalize_z_r[0] <= normalize_z;
-    for(i=0; i<24; i=i+1) begin
+    for(i=0; i<NORMAL_DEALY; i=i+1) begin
       normalize_x_r[i+1] <= normalize_x_r[i];
       normalize_y_r[i+1] <= normalize_y_r[i];
       normalize_z_r[i+1] <= normalize_z_r[i];
@@ -369,9 +370,9 @@ module process #(
   end
   // weight: 19 bits; normalize: 16 bits; answer: 19 bits
   always @(*) begin
-    temp_answer_2[0] = $signed(weight[WEIGHT_NUM - 3]) * $signed(normalize_x_r[23]);
-    temp_answer_2[1] = $signed(weight[WEIGHT_NUM - 2]) * $signed(normalize_y_r[23]);
-    temp_answer_2[2] = $signed(weight[WEIGHT_NUM - 1]) * $signed(normalize_z_r[23]);
+    temp_answer_2[0] = $signed(weight[WEIGHT_NUM - 3]) * $signed(normalize_x_r[NORMAL_DEALY-1]);
+    temp_answer_2[1] = $signed(weight[WEIGHT_NUM - 2]) * $signed(normalize_y_r[NORMAL_DEALY-1]);
+    temp_answer_2[2] = $signed(weight[WEIGHT_NUM - 1]) * $signed(normalize_z_r[NORMAL_DEALY-1]);
     answer[WEIGHT_NUM - 3] = temp_answer_2[0] >>> 16;
     answer[WEIGHT_NUM - 2] = temp_answer_2[1] >>> 16;
     answer[WEIGHT_NUM - 1] = temp_answer_2[2] >>> 16;
@@ -447,8 +448,18 @@ module process #(
       label <= 1;
   end
 
+  reg [63:0] target_count;
+  always @(posedge aclk or negedge aresetn) begin
+    if(!aresetn)
+      target_count <= 64'd0;
+    else if(next_state == WEIGHT && weight_idx == 5'd0 && s_hand)
+      // 當收到 CAL_NUM 的當下，直接把常數加好並存進暫存器
+      target_count <= s_tdata + PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM; 
+  end
+
   assign m_tdata =  label;
-  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
-  assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
+  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= target_count)? 1: 0;
+  // assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
+  assign m_tlast = (input_count == target_count) ? 1'b1 : 1'b0;
 
 endmodule

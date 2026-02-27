@@ -1,5 +1,6 @@
 module K_ZGu #(
-  parameter integer DATA_WIDTH = 16
+  parameter integer DATA_WIDTH = 16,
+  parameter integer DIFF_DELAY = 24
 )(
   input  wire                         clk,
   input  wire signed [DATA_WIDTH-1:0] ori_x,
@@ -20,15 +21,15 @@ module K_ZGu #(
   wire [DATA_WIDTH:0] diff_y = ori_y - normalize_y;
   wire [DATA_WIDTH:0] diff_z = ori_z - normalize_z;
 
-  reg  [DATA_WIDTH:0] diff_x_r [0:21];
-  reg  [DATA_WIDTH:0] diff_y_r [0:21];
-  reg  [DATA_WIDTH:0] diff_z_r [0:21];
+  reg  [DATA_WIDTH:0] diff_x_r [0:DIFF_DELAY-1];
+  reg  [DATA_WIDTH:0] diff_y_r [0:DIFF_DELAY-1];
+  reg  [DATA_WIDTH:0] diff_z_r [0:DIFF_DELAY-1];
 
   always @(posedge clk) begin
     diff_x_r[0] <= diff_x;
     diff_y_r[0] <= diff_y;
     diff_z_r[0] <= diff_z;
-    for (i=1; i<22; i=i+1) begin
+    for (i=1; i<DIFF_DELAY; i=i+1) begin
       diff_x_r[i] <= diff_x_r[i-1];
       diff_y_r[i] <= diff_y_r[i-1];
       diff_z_r[i] <= diff_z_r[i-1];
@@ -55,8 +56,8 @@ module K_ZGu #(
     .ans_q16(d1_q16) // q16
   );
 
-  mul_q16 u_mul_x (.a($signed(d1_q16)), .b($signed(diff_x_r[21])), .y(K_ZGx));
-  mul_q16 u_mul_y (.a($signed(d1_q16)), .b($signed(diff_y_r[21])), .y(K_ZGy));
-  mul_q16 u_mul_z (.a($signed(d1_q16)), .b($signed(diff_z_r[21])), .y(K_ZGz));
+  mul_q16 u_mul_x (.a($signed(d1_q16)), .b($signed(diff_x_r[DIFF_DELAY-1])), .y(K_ZGx));
+  mul_q16 u_mul_y (.a($signed(d1_q16)), .b($signed(diff_y_r[DIFF_DELAY-1])), .y(K_ZGy));
+  mul_q16 u_mul_z (.a($signed(d1_q16)), .b($signed(diff_z_r[DIFF_DELAY-1])), .y(K_ZGz));
 
 endmodule

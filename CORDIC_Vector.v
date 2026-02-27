@@ -15,8 +15,6 @@ module CORDIC_Vector(
   // wire signed [31:0] x [1:32];
   // wire signed [31:0] y [1:16];
   // wire signed [31:0] z [1:32];
-  wire signed [47:0] x_temp;
-  wire signed [47:0] output_temp;
   
   always @ (posedge clk) begin
     x_00 <= Input_x;
@@ -33,8 +31,9 @@ module CORDIC_Vector(
   wire signed [31:0] x_next[0:15];
   wire signed [31:0] y_next[0: 7];
   wire signed [31:0] z_next[0:15];
-
-  assign x_temp = x[7] * K;
+  reg  signed [47:0] x_temp;
+  reg  signed [47:0] output_temp;
+  reg  signed [31:0] z_7_delay;
 
   //--- generate operation pipeline --- 
   generate
@@ -50,7 +49,7 @@ module CORDIC_Vector(
                    .Output_x_n(x_mid[i]), .Output_y_n(y_mid[i]), .Output_z_n(z_mid[i]));
       else if(i == 8) begin 
         CORDIC_Roter #(.SHIFT_BASE((i-8)*2))
-            rote02 ( .Input_x_n_1(x_temp[47:16]), .Input_y_n_1(z[i-1]),
+            rote02 ( .Input_x_n_1(x_temp[47:16]), .Input_y_n_1(z_7_delay),
                      .Output_x_n(x_mid[i]),     .Output_y_n(z_mid[i]));
       end
       else 
@@ -72,15 +71,29 @@ module CORDIC_Vector(
 
   integer j;
   always @(posedge clk) begin
-    for ( j = 0; j < 16; j = j + 1) begin
+    for (j = 0; j < 16; j = j + 1) begin
       x[j] <= x_next[j];
       z[j] <= z_next[j];
     end
-    for ( j = 0; j < 8; j = j + 1) begin
+
+    for (j = 0; j < 8; j = j + 1) begin
       y[j] <= y_next[j];
-    end
+      end
+  end
+
+  always @(posedge clk) begin
+    x_temp <= x[7] * K;
+  end
+
+  always @(posedge clk) begin
+    z_7_delay <= z[7];
   end
   
+  always @(posedge clk) begin
+    output_temp <= x[15] * K;
+    Output_xn <= output_temp[47:16];
+  end
+
   ////--- generate operation pipeline --- 
   //generate
   //  genvar i;
@@ -105,9 +118,4 @@ module CORDIC_Vector(
   //  end
   //endgenerate
   
-  assign output_temp = x[15] * K;
-  always @ (posedge clk) begin
-    Output_xn <= output_temp[47:16];
-  end
-
 endmodule
