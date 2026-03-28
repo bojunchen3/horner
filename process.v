@@ -1,9 +1,9 @@
 module process #(
   parameter integer DATA_WIDTH   = 16,
-  parameter integer OUT_WIDTH    = 8,
+  parameter integer OUT_WIDTH    = 16,
   parameter integer LANES        = 4,
-  parameter integer PIPE_LAT     = 35,
-  parameter integer NORMAL_DEALY = 26,
+  parameter integer PIPE_LAT     = 31,
+  parameter integer NORMAL_DEALY = 22,
   parameter integer ORI_NUM      = 8,
   parameter integer INT_NUM      = 35,
   parameter integer LAY_NUM      = 5
@@ -255,7 +255,7 @@ module process #(
   genvar j;
   generate
     for (j = 0; j < ORI_NUM; j = j + 1) begin : gen_kzgu
-      K_ZGu #(.DATA_WIDTH(DATA_WIDTH)) u_kzgu (
+      K_ZGu u_kzgu (
         .clk(aclk),
         .ori_x(ori_x[j]),
         .ori_y(ori_y[j]),
@@ -293,7 +293,7 @@ module process #(
   
   generate
     for (j = 0; j < INT_NUM; j = j + 1) begin : gen_kz
-      K_Z #(.DATA_WIDTH(DATA_WIDTH)) u_kz (
+      K_Z u_kz (
         .clk(aclk),
         .int_x(int_x[j]),
         .int_y(int_y[j]),
@@ -310,33 +310,12 @@ module process #(
   parameter integer NUM_PER_LAYER = INT_NUM / LAY_NUM;
   reg [31:0] diff_K_Z [0:INT_NUM-LAY_NUM-1];
   always @(posedge aclk) begin
-    // diff_K_Z[0] <= K_Z[0] - K_Z[1];
-    // diff_K_Z[1] <= K_Z[0] - K_Z[2];
-    // diff_K_Z[2] <= K_Z[3] - K_Z[4];
-    // diff_K_Z[3] <= K_Z[3] - K_Z[5];
     for(i=0; i<LAY_NUM; i=i+1) begin
       for(k=1; k<NUM_PER_LAYER; k=k+1)
         diff_K_Z[(NUM_PER_LAYER-1)*i+k-1] <= K_Z[NUM_PER_LAYER*i] - K_Z[NUM_PER_LAYER*i+k];
     end
   end
 
-  // wire [31:0] answer [0:WEIGHT_NUM-1];
-  // generate
-  //   for (j = 0; j < ORI_NUM; j = j + 1) begin : gen_answer_ori
-  //     mul_q16 u_mul0  (.a($signed(weight[          j])), .b($signed(K_ZGx[j])), .y(answer[          j]));
-  //     mul_q16 u_mul1  (.a($signed(weight[  ORI_NUM+j])), .b($signed(K_ZGy[j])), .y(answer[  ORI_NUM+j]));
-  //     mul_q16 u_mul2  (.a($signed(weight[2*ORI_NUM+j])), .b($signed(K_ZGz[j])), .y(answer[2*ORI_NUM+j]));
-  //   end
-  // endgenerate
-  // generate
-  //   for (j = 0; j < INT_NUM - LAY_NUM; j = j + 1) begin : gen_answer_int
-  //     mul_q16 u_muli3 (.a($signed(weight[3*ORI_NUM + j])), .b($signed(diff_K_Z[j])), .y(answer[3*ORI_NUM + j]));
-  //   end
-  // endgenerate
-  // mul_q16 u_mul14 (.a($signed(weight[WEIGHT_NUM - 3])), .b($signed(normalize_x_r[39])), .y(answer[WEIGHT_NUM - 3]));
-  // mul_q16 u_mul15 (.a($signed(weight[WEIGHT_NUM - 2])), .b($signed(normalize_y_r[39])), .y(answer[WEIGHT_NUM - 2]));
-  // mul_q16 u_mul16 (.a($signed(weight[WEIGHT_NUM - 1])), .b($signed(normalize_z_r[39])), .y(answer[WEIGHT_NUM - 1]));
-  
   reg signed [31:0] answer        [0:WEIGHT_NUM-1];
   reg signed [50:0] temp_answer_0 [0:WEIGHT_NUM-4];
   reg signed [50:0] temp_answer_1 [0:WEIGHT_NUM-4];
@@ -369,19 +348,20 @@ module process #(
     answer[WEIGHT_NUM - 1] = temp_answer_2[2] >>> 16;
   end
 
-  reg [31:0] answer_r [0:63];
-  reg [35:0] field;
+  reg [31:0] answer_r [0:56];
 
   always @(posedge aclk or negedge aresetn) begin
     if(!aresetn)
       for(i=0; i<64; i=i+1)
-        answer_r[i] <= 32'd0;
+        answer_r[i] <= 0;
     else
       for(i=0; i<WEIGHT_NUM; i=i+1)
         answer_r[i] <= answer[i];
   end
 
-  reg [33:0] add_temp [0:19];
+  reg [31:0] add_temp [0:18];
+  reg [32:0] field;
+  reg [15:0] out;
 
   always @(posedge aclk) begin
     add_temp[ 0] <= $signed(answer_r[ 0] + answer_r[ 1]) + $signed(answer_r[ 2] + answer_r[ 3]);
@@ -398,46 +378,48 @@ module process #(
     add_temp[11] <= $signed(answer_r[44] + answer_r[45]) + $signed(answer_r[46] + answer_r[47]);
     add_temp[12] <= $signed(answer_r[48] + answer_r[49]) + $signed(answer_r[50] + answer_r[51]);
     add_temp[13] <= $signed(answer_r[52] + answer_r[53]) + $signed(answer_r[54] + answer_r[55]);
-    add_temp[14] <= $signed(answer_r[56] + answer_r[57]) + $signed(answer_r[58] + answer_r[59]);
-    add_temp[15] <= $signed(answer_r[60] + answer_r[61]) + $signed(answer_r[62] + answer_r[63]);
+    add_temp[14] <= $signed(answer_r[56]); // + answer_r[57]) + $signed(answer_r[58] + answer_r[59]);
+    // add_temp[15] <= $signed(answer_r[60] + answer_r[61]) + $signed(answer_r[62] + answer_r[63]);
 
-    add_temp[16] <= $signed(add_temp[ 0] + add_temp[ 1]) + $signed(add_temp[ 2] + add_temp[ 3]);
-    add_temp[17] <= $signed(add_temp[ 4] + add_temp[ 5]) + $signed(add_temp[ 6] + add_temp[ 7]);
-    add_temp[18] <= $signed(add_temp[ 8] + add_temp[ 9]) + $signed(add_temp[10] + add_temp[11]);
-    add_temp[19] <= $signed(add_temp[12] + add_temp[13]) + $signed(add_temp[14] + add_temp[15]);
+    add_temp[15] <= $signed(add_temp[ 0] + add_temp[ 1]) + $signed(add_temp[ 2] + add_temp[ 3]);
+    add_temp[16] <= $signed(add_temp[ 4] + add_temp[ 5]) + $signed(add_temp[ 6] + add_temp[ 7]);
+    add_temp[17] <= $signed(add_temp[ 8] + add_temp[ 9]) + $signed(add_temp[10] + add_temp[11]);
+    add_temp[18] <= $signed(add_temp[12] + add_temp[13]) + $signed(add_temp[14]); // + add_temp[15]);
 
-    field <= $signed(add_temp[16] + add_temp[17]) + $signed(add_temp[18] + add_temp[19]);
+    field <= $signed(add_temp[15] + add_temp[16]) + $signed(add_temp[17] + add_temp[18]);
+
+    out <= field[17:2];
   end
 
-  reg [35:0] layer1, layer2, layer3, layer4, layer5;
-  always @(posedge aclk) begin
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM)
-      layer1 <= field;
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 1)
-      layer2 <= field;
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 2)
-      layer3 <= field;
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 3)
-      layer4 <= field;
-    if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 4)
-      layer5 <= field;
-  end
+  // reg [35:0] layer1, layer2, layer3, layer4, layer5;
+  // always @(posedge aclk) begin
+  //   if (input_count == PIPE_LAT + ORI_NUM + INT_NUM)
+  //     layer1 <= field;
+  //   if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 1)
+  //     layer2 <= field;
+  //   if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 2)
+  //     layer3 <= field;
+  //   if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 3)
+  //     layer4 <= field;
+  //   if (input_count == PIPE_LAT + ORI_NUM + INT_NUM + 4)
+  //     layer5 <= field;
+  // end
   
-  reg [7:0] label;
-  always @(posedge aclk) begin
-    if ($signed(field) <= $signed(layer1))
-      label <= 6;
-    else if ($signed(field) <= $signed(layer2))
-      label <= 5;
-    else if ($signed(field) <= $signed(layer3))
-      label <= 4;
-    else if ($signed(field) <= $signed(layer4))
-      label <= 3;
-    else if ($signed(field) <= $signed(layer5))
-      label <= 2;
-    else
-      label <= 1;
-  end
+  // reg [7:0] label;
+  // always @(posedge aclk) begin
+  //   if ($signed(field) <= $signed(layer1))
+  //     label <= 6;
+  //   else if ($signed(field) <= $signed(layer2))
+  //     label <= 5;
+  //   else if ($signed(field) <= $signed(layer3))
+  //     label <= 4;
+  //   else if ($signed(field) <= $signed(layer4))
+  //     label <= 3;
+  //   else if ($signed(field) <= $signed(layer5))
+  //     label <= 2;
+  //   else
+  //     label <= 1;
+  // end
 
   reg [63:0] target_count;
   always @(posedge aclk or negedge aresetn) begin
@@ -448,8 +430,8 @@ module process #(
       target_count <= s_tdata + PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM; 
   end
 
-  assign m_tdata =  label;
-  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM && input_count <= target_count)? 1: 0;
+  assign m_tdata = out;
+  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM && input_count <= target_count)? 1: 0;
   // assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
   assign m_tlast = (input_count == target_count) ? 1'b1 : 1'b0;
 
