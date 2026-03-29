@@ -1,6 +1,7 @@
 module K_ZGu #(
   parameter integer WIDTH = 19,
-  parameter integer DIFF_DELAY = 20
+  parameter integer CORDIC_ITER = 16,
+  parameter integer DIFF_DELAY = CORDIC_ITER + 8
 )(
   input  wire                         clk,
   input  wire signed [15:0] ori_x,
@@ -10,9 +11,9 @@ module K_ZGu #(
   input  wire signed [15:0] normalize_y,
   input  wire signed [15:0] normalize_z,
   
-  output wire signed [31:0]   K_ZGx,
-  output wire signed [31:0]   K_ZGy,
-  output wire signed [31:0]   K_ZGz
+  output wire signed [34:0]   K_ZGx,
+  output wire signed [34:0]   K_ZGy,
+  output wire signed [34:0]   K_ZGz
 );
   
   integer i;
@@ -41,24 +42,24 @@ module K_ZGu #(
   // wire [31:0] cordic_z =  { {15{diff_z[WIDTH]}}, diff_z }; // q16
 
   wire [15: 0] ro;
-  CORDIC_Vector #( .WIDTH(WIDTH)) cov(
+  CORDIC_Vector #( .WIDTH(WIDTH), .ITER(CORDIC_ITER)) cov(
     .clk       (clk),
     .Input_x   (cordic_x), // q16
-    .Input_y   (diff_y), // q16
-    .Input_z   (diff_z), // q16
-    .Output_xn (ro) // q16
+    .Input_y   (diff_y),   // q16
+    .Input_z   (diff_z),   // q16
+    .Output_xn (ro)        // q16
   );
 
-  wire signed [31:0] d1_q16;
+  wire signed [35:0] d1_q16;
   cubic_cov_d1 ccd (
     .clk(clk),
-    .r_q16(ro), // q16
-    .ans_q16(d1_q16) // q16
+    .r_q16(ro),      // q16
+    .ans_q16(d1_q16) // q32
   );
   
-  wire [47:0] K_ZGx_temp;
-  wire [47:0] K_ZGy_temp;
-  wire [47:0] K_ZGz_temp;
+  wire [51:0] K_ZGx_temp;
+  wire [51:0] K_ZGy_temp;
+  wire [51:0] K_ZGz_temp;
 
   assign K_ZGx_temp = $signed(d1_q16) * $signed(diff_x_r[DIFF_DELAY-1]) >>> 16;
   assign K_ZGy_temp = $signed(d1_q16) * $signed(diff_y_r[DIFF_DELAY-1]) >>> 16;

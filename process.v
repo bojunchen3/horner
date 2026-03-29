@@ -2,14 +2,12 @@ module process #(
   parameter integer DATA_WIDTH   = 16,
   parameter integer OUT_WIDTH    = 16,
   parameter integer LANES        = 4,
-  parameter integer PIPE_LAT     = 31,
-  parameter integer NORMAL_DEALY = 22,
+  parameter integer CORDIC_ITER  = 12,
+  parameter integer PIPE_LAT     = CORDIC_ITER + 19,
+  parameter integer NORMAL_DEALY = CORDIC_ITER + 10,
   parameter integer ORI_NUM      = 8,
   parameter integer INT_NUM      = 35,
   parameter integer LAY_NUM      = 5
-  // parameter integer ORI_NUM    = 4,
-  // parameter integer INT_NUM    = 6,
-  // parameter integer LAY_NUM    = 2
 )(
   input  wire                        aclk,
   input  wire                        aresetn,
@@ -135,14 +133,9 @@ module process #(
     end
   end
 
-  always @(posedge aclk or negedge aresetn) begin
-    if(!aresetn)
-      for(i=0; i<16; i=i+1)
-        weight[i] <= {64{1'b0}};
-    else begin
-      if(next_state == WEIGHT && weight_idx > 5'd0 && s_hand)
-        weight[weight_idx - 1] <= s_tdata;
-    end
+  always @(posedge aclk) begin
+    if(next_state == WEIGHT && weight_idx > 5'd0 && s_hand)
+      weight[weight_idx - 1] <= s_tdata;
   end
 
   always @(*) begin
@@ -156,30 +149,21 @@ module process #(
     end    
   end
 
-  always @(posedge aclk or negedge aresetn) begin
-    if(!aresetn)
-      for(i=0; i<12; i=i+1)
-        mat[i] <= {DATA_WIDTH{1'b0}};
-    else begin
-      if(next_state == LOAD && s_hand) begin
-        mat[mat_idx] <= s_tdata;
-      end
+  always @(posedge aclk) begin
+    if(next_state == LOAD && s_hand) begin
+      mat[mat_idx] <= s_tdata;
     end
   end
 
   // matrix value
   wire [31:0] a00, a01, a02, a03,
-                        a10, a11, a12, a13,
-                        a20, a21, a22, a23;
+              a10, a11, a12, a13,
+              a20, a21, a22, a23;
 
   assign a00 = mat[ 0]; assign a01 = mat[ 1]; assign a02 = mat[ 2]; assign a03 = mat[ 3];
   assign a10 = mat[ 4]; assign a11 = mat[ 5]; assign a12 = mat[ 6]; assign a13 = mat[ 7];
   assign a20 = mat[ 8]; assign a21 = mat[ 9]; assign a22 = mat[10]; assign a23 = mat[11];
 
-  // only in STREAM state = s_tdata, others = 0
-  // wire [LANES*DATA_WIDTH-1:0] ip_vector =
-  //   (state == STREAM) ? s_tdata : {LANES*DATA_WIDTH{1'b0}};
-  
   reg  [LANES*DATA_WIDTH-1:0] ip_vector;
   always @(*) begin
     if(next_state == STREAM)
@@ -248,14 +232,14 @@ module process #(
     end
   end
 
-  wire signed [31:0] K_ZGx_temp_0 [0:ORI_NUM-1];
-  wire signed [31:0] K_ZGy_temp_0 [0:ORI_NUM-1];
-  wire signed [31:0] K_ZGz_temp_0 [0:ORI_NUM-1];
+  wire signed [34:0] K_ZGx_temp_0 [0:ORI_NUM-1];
+  wire signed [34:0] K_ZGy_temp_0 [0:ORI_NUM-1];
+  wire signed [34:0] K_ZGz_temp_0 [0:ORI_NUM-1];
 
   genvar j;
   generate
     for (j = 0; j < ORI_NUM; j = j + 1) begin : gen_kzgu
-      K_ZGu u_kzgu (
+      K_ZGu #(.CORDIC_ITER(CORDIC_ITER)) u_kzgu (
         .clk(aclk),
         .ori_x(ori_x[j]),
         .ori_y(ori_y[j]),
@@ -270,12 +254,12 @@ module process #(
     end
   endgenerate
 
-  reg signed [31:0] K_ZGx_temp_1 [0:ORI_NUM-1];
-  reg signed [31:0] K_ZGy_temp_1 [0:ORI_NUM-1];
-  reg signed [31:0] K_ZGz_temp_1 [0:ORI_NUM-1];
-  reg signed [31:0] K_ZGx        [0:ORI_NUM-1];
-  reg signed [31:0] K_ZGy        [0:ORI_NUM-1];
-  reg signed [31:0] K_ZGz        [0:ORI_NUM-1];
+  reg signed [34:0] K_ZGx_temp_1 [0:ORI_NUM-1];
+  reg signed [34:0] K_ZGy_temp_1 [0:ORI_NUM-1];
+  reg signed [34:0] K_ZGz_temp_1 [0:ORI_NUM-1];
+  reg signed [34:0] K_ZGx        [0:ORI_NUM-1];
+  reg signed [34:0] K_ZGy        [0:ORI_NUM-1];
+  reg signed [34:0] K_ZGz        [0:ORI_NUM-1];
 
   // delay one clock wait for K_Z
   always @(posedge aclk) begin
@@ -289,11 +273,11 @@ module process #(
     end
   end
   
-  wire signed [31:0] K_Z [0:INT_NUM-1];
+  wire signed [34:0] K_Z [0:INT_NUM-1];
   
   generate
     for (j = 0; j < INT_NUM; j = j + 1) begin : gen_kz
-      K_Z u_kz (
+      K_Z #(.CORDIC_ITER(CORDIC_ITER)) u_kz (
         .clk(aclk),
         .int_x(int_x[j]),
         .int_y(int_y[j]),
@@ -309,6 +293,7 @@ module process #(
   integer k;
   parameter integer NUM_PER_LAYER = INT_NUM / LAY_NUM;
   reg [31:0] diff_K_Z [0:INT_NUM-LAY_NUM-1];
+
   always @(posedge aclk) begin
     for(i=0; i<LAY_NUM; i=i+1) begin
       for(k=1; k<NUM_PER_LAYER; k=k+1)
@@ -316,11 +301,13 @@ module process #(
     end
   end
 
-  reg signed [31:0] answer        [0:WEIGHT_NUM-1];
-  reg signed [50:0] temp_answer_0 [0:WEIGHT_NUM-4];
-  reg signed [50:0] temp_answer_1 [0:WEIGHT_NUM-4];
-  reg signed [34:0] temp_answer_2 [0:2];
-  // weight: 19 bits; K_ZGu: 32 bits; answer: 35 bits
+  reg signed [63:0] temp_answer_0 [0:3*ORI_NUM-1];
+  reg signed [63:0] temp_answer_1 [0:INT_NUM-LAY_NUM-1];
+  reg signed [63:0] temp_answer_2 [0:2];
+  reg signed [47:0] answer        [0:WEIGHT_NUM-1];
+  reg signed [47:0] answer_r      [0:WEIGHT_NUM-1];
+
+  // orientation
   always @(*) begin
     for (i = 0; i < ORI_NUM; i = i + 1) begin
       temp_answer_0[            i] = $signed(weight[          i]) * $signed(K_ZGx[i]);
@@ -331,37 +318,37 @@ module process #(
       answer[2*ORI_NUM+i] = temp_answer_0[2*ORI_NUM + i] >>> 16;
     end
   end
-  // weight: 19 bits; diff_K_Z: 32 bits; answer: 35 bits
+
+  // interface
   always @(*) begin
     for (i = 0; i < INT_NUM - LAY_NUM; i = i + 1) begin
       temp_answer_1[i] = $signed(weight[3*ORI_NUM + i]) * $signed(diff_K_Z[i]);
       answer[3*ORI_NUM + i] = temp_answer_1[i] >>> 16;
     end
   end
-  // weight: 19 bits; normalize: 16 bits; answer: 19 bits
+
+  // input vector
   always @(*) begin
-    temp_answer_2[0] = $signed(weight[WEIGHT_NUM - 3]) * $signed(normalize_x_r[NORMAL_DEALY-1]);
-    temp_answer_2[1] = $signed(weight[WEIGHT_NUM - 2]) * $signed(normalize_y_r[NORMAL_DEALY-1]);
-    temp_answer_2[2] = $signed(weight[WEIGHT_NUM - 1]) * $signed(normalize_z_r[NORMAL_DEALY-1]);
+    temp_answer_2[0] = $signed(weight[WEIGHT_NUM - 3]) * ($signed(normalize_x_r[NORMAL_DEALY-1]) <<< 16);
+    temp_answer_2[1] = $signed(weight[WEIGHT_NUM - 2]) * ($signed(normalize_y_r[NORMAL_DEALY-1]) <<< 16);
+    temp_answer_2[2] = $signed(weight[WEIGHT_NUM - 1]) * ($signed(normalize_z_r[NORMAL_DEALY-1]) <<< 16);
     answer[WEIGHT_NUM - 3] = temp_answer_2[0] >>> 16;
     answer[WEIGHT_NUM - 2] = temp_answer_2[1] >>> 16;
     answer[WEIGHT_NUM - 1] = temp_answer_2[2] >>> 16;
   end
 
-  reg [31:0] answer_r [0:56];
-
   always @(posedge aclk or negedge aresetn) begin
     if(!aresetn)
-      for(i=0; i<64; i=i+1)
+      for(i = 0; i < WEIGHT_NUM; i = i + 1)
         answer_r[i] <= 0;
     else
-      for(i=0; i<WEIGHT_NUM; i=i+1)
+      for(i = 0; i < WEIGHT_NUM; i = i + 1)
         answer_r[i] <= answer[i];
   end
 
-  reg [31:0] add_temp [0:18];
-  reg [32:0] field;
-  reg [15:0] out;
+  reg signed [48:0] add_temp [0:18];
+  reg signed [49:0] field;
+  reg signed [15:0] out;
 
   always @(posedge aclk) begin
     add_temp[ 0] <= $signed(answer_r[ 0] + answer_r[ 1]) + $signed(answer_r[ 2] + answer_r[ 3]);
@@ -388,10 +375,10 @@ module process #(
 
     field <= $signed(add_temp[15] + add_temp[16]) + $signed(add_temp[17] + add_temp[18]);
 
-    out <= field[17:2];
+    out <= field[33:18];
   end
 
-  // reg [35:0] layer1, layer2, layer3, layer4, layer5;
+  // reg [32:0] layer1, layer2, layer3, layer4, layer5;
   // always @(posedge aclk) begin
   //   if (input_count == PIPE_LAT + ORI_NUM + INT_NUM)
   //     layer1 <= field;
@@ -421,18 +408,17 @@ module process #(
   //     label <= 1;
   // end
 
-  reg [63:0] target_count;
+  reg [31:0] target_count;
+
   always @(posedge aclk or negedge aresetn) begin
     if(!aresetn)
-      target_count <= 64'd0;
+      target_count <= 31'd0;
     else if(next_state == WEIGHT && weight_idx == 5'd0 && s_hand)
-      // 當收到 CAL_NUM 的當下，直接把常數加好並存進暫存器
       target_count <= s_tdata + PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM; 
   end
 
   assign m_tdata = out;
-  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM && input_count <= target_count)? 1: 0;
-  // assign m_tlast  = (input_count == PIPE_LAT + ORI_NUM + INT_NUM + LAY_NUM + CAL_NUM)? 1: 0;
+  assign m_tvalid = (input_count  > PIPE_LAT + ORI_NUM + INT_NUM && input_count <= target_count)? 1'b1: 1'b0;
   assign m_tlast = (input_count == target_count) ? 1'b1 : 1'b0;
 
 endmodule
