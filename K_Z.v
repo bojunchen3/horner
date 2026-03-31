@@ -20,7 +20,7 @@ module K_Z #(
   // wire [31:0] cordic_y =  { {15{diff_y[WIDTH]}}, diff_y }; // q16
   // wire [31:0] cordic_z =  { {15{diff_z[WIDTH]}}, diff_z }; // q16
 
-  wire [15: 0] ri;
+  wire [31:0] ri;
   CORDIC_Vector #( .WIDTH(WIDTH), .ITER(CORDIC_ITER)) cov(
     .clk       (clk),
     .Input_x   (cordic_x), // q16
@@ -31,8 +31,8 @@ module K_Z #(
 
   cubic_cov cc (
     .clk(clk),
-    .r_q16(ri),
-    .ans_q16(K_Z_out) // q32
+    .r_q32(ri),
+    .ans_q32(K_Z_out) // q32
   );
 
 endmodule

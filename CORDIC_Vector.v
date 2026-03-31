@@ -1,18 +1,16 @@
 module CORDIC_Vector #(
-  parameter WIDTH = 18,
+  parameter WIDTH = 20,
   parameter ITER = 16
 )(
   input         clk,
   input  [16:0] Input_x,
   input  [16:0] Input_y,
   input  [16:0] Input_z,
-  output [15:0] Output_xn
+  output reg [31:0] Output_xn
 );
   
   parameter K = 16'h9b75;  //K=0.607253*2^16,32'h09b74
-  
-  reg signed [15:0] Output_xn;
-  
+
   reg signed [16:0] x_00,y_00,z_00;
   
   always @ (posedge clk) begin
@@ -32,7 +30,7 @@ module CORDIC_Vector #(
   wire signed [WIDTH-1:0]  z_next[0: ITER-1];
   reg  signed [WIDTH-1:0]  z_delay;
   reg  signed [WIDTH+15:0] x_temp;
-  reg  signed [WIDTH+15:0] output_temp;
+  reg         [31:0] output_temp;
 
   //--- generate operation pipeline --- 
   generate
@@ -96,7 +94,7 @@ module CORDIC_Vector #(
   
   always @(posedge clk) begin
     output_temp <= x[ITER-1] * K;
-    Output_xn <= output_temp[WIDTH+15:16];
+    Output_xn <= output_temp;
   end
 
 endmodule

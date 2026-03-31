@@ -1,6 +1,6 @@
 module CORDIC_Roter #(
   parameter SHIFT_BASE = 0,
-  parameter WIDTH      = 18
+  parameter WIDTH      = 20
 )(
   input      signed [WIDTH-1:0] Input_x,
   input      signed [WIDTH-1:0] Input_y,

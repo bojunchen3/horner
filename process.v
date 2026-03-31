@@ -292,7 +292,7 @@ module process #(
 
   integer k;
   parameter integer NUM_PER_LAYER = INT_NUM / LAY_NUM;
-  reg [31:0] diff_K_Z [0:INT_NUM-LAY_NUM-1];
+  reg [32:0] diff_K_Z [0:INT_NUM-LAY_NUM-1];
 
   always @(posedge aclk) begin
     for(i=0; i<LAY_NUM; i=i+1) begin

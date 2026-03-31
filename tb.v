@@ -307,9 +307,9 @@ module tb;
     vec_vals[VEC_NUM-2][  DATA_WIDTH-1:            0] =  25; // input 1
     vec_vals[VEC_NUM-2][2*DATA_WIDTH-1:   DATA_WIDTH] = 225;
     vec_vals[VEC_NUM-2][3*DATA_WIDTH-1: 2*DATA_WIDTH] =  25;
-    vec_vals[VEC_NUM-1][  DATA_WIDTH-1:            0] =  25; // input 2
-    vec_vals[VEC_NUM-1][2*DATA_WIDTH-1:   DATA_WIDTH] = 275;
-    vec_vals[VEC_NUM-1][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 325;
+    vec_vals[VEC_NUM-1][  DATA_WIDTH-1:            0] = 725; // input 2
+    vec_vals[VEC_NUM-1][2*DATA_WIDTH-1:   DATA_WIDTH] = 775;
+    vec_vals[VEC_NUM-1][3*DATA_WIDTH-1: 2*DATA_WIDTH] = 525;
 
     for (i=0; i < VEC_NUM; i=i+1) begin
       vec_vals[i] = vec_vals[i] <<< 6;
